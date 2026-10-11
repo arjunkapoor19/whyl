@@ -59,7 +59,7 @@ def test_cli_end_to_end(tmp_path, capsys):
     assert main(["--db", db, "blame", "/workspace/calc.py:2"]) == 0
     out = capsys.readouterr().out
     assert "turn 2" in out
-    assert "▶ 17:24:24  edit     ~calc.py   ← wrote this line" in out
+    assert "▶ 17:24:24  edit     calc.py +1 −1   ← wrote this line" in out
     assert "test     ✗ python3 -m unittest -q  → 1 test, 1 failed" in out
     assert "rewritten 2 times" in out
 
@@ -72,14 +72,16 @@ def test_cli_blame_shows_what_the_agent_did(tmp_path, capsys):
     capsys.readouterr()
     assert main(["--db", db, "blame", "/workspace/shop.py:6"]) == 0
     out = capsys.readouterr().out
-    detail = " " * 21 + "│ "
+    detail = "  │ "
     # The edit that wrote the line: full diff for shop.py, with the line marked.
     assert detail + "-    return price - percent\n" in out
     assert detail + "+    return price * (1 - percent / 100)   ← this line\n" in out
-    # An earlier edit to the test file is shown, not just named.
-    assert detail + "+        self.assertEqual(apply_discount(200, 20), 160)\n" in out
-    # A new file is previewed, not dumped.
-    assert detail + "… 6 more lines\n" in out
-    # Agent messages are shown in full.
+    # Why: what the agent said before it, in full, and the failing run just before.
     assert "I’ll correct `apply_discount`." in out  # the end of a 230-character message
+    assert "  failing  " in out and "3 tests, 2 failed · AssertionError: -25 != 0" in out
+    # How it was checked, every step on a line, and the agent's conclusion.
+    assert "Then, 1s later: ✓ python3 -m unittest -v  → 3 tests passed" in out
+    assert "edit     test_shop.py +1 −1\n" in out
+    assert "THE AGENT CONCLUDED" in out and "all three tests pass" in out
+    assert "↓ t2 " in out  # the session's next turn
     assert "\033[" not in out  # no colour codes when not writing to a terminal

@@ -17,6 +17,7 @@ from typing import Callable, Iterable
 
 from agent_history import model
 from agent_history.adapters import claude_code, codex, codex_rollout, opencode
+from agent_history.explain import Explainer
 from agent_history.model import NormalizedSession
 from agent_history.store import Store
 
@@ -102,6 +103,10 @@ SOURCES: list[Source] = [
 ]
 
 
+# Agent CLIs that can write explanations without being opened (see explain.py), in order of preference.
+EXPLAINERS: list[Explainer] = [claude_code.EXPLAINER, codex.EXPLAINER, opencode.EXPLAINER]
+
+
 def ingest(store: Store, path: Path, sources: list[Source] = SOURCES) -> Result:
     """Ingest one explicitly named path with the first source that recognises it."""
     source = next((s for s in sources if s.matches(path)), None)
@@ -153,6 +158,8 @@ def _ingest(store: Store, source: Source, path: Path, sources: list[Source]) -> 
         normalized = source.normalize(path)
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
         return Result(path, source.name, FAILED, reason=f"{type(error).__name__}: {error}")
+    if _inside(normalized.session.cwd, store.explain_dir):
+        return Result(path, source.name, SKIPPED, normalized.session.id, "ah's own explanation run")
     owner = store.owner_of_threads([t.id for t in normalized.threads])
     if owner is not None:
         holder = _source_of(owner, sources)
@@ -164,6 +171,13 @@ def _ingest(store: Store, source: Source, path: Path, sources: list[Source]) -> 
             return Result(path, source.name, SKIPPED, owner["id"], f"a more recent record ({owner['id']}) is stored")
     store.ingest(normalized, source.name)
     return Result(path, source.name, INGESTED, normalized.session.id)
+
+
+def _inside(path: str | None, folder: Path) -> bool:
+    if not path:
+        return False
+    inner, outer = os.path.realpath(path), os.path.realpath(folder)
+    return inner == outer or inner.startswith(outer + os.sep)
 
 
 def _source_of(session_row, sources: list[Source]) -> Source | None:

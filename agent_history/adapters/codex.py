@@ -12,12 +12,14 @@ What is kept and what is dropped is documented in docs/event-model.md.
 from __future__ import annotations
 
 import json
+import re
 import shlex
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from agent_history import model
+from agent_history.explain import Answer, Explainer
 from agent_history.model import Event, FileChange, NormalizedSession, Session, Thread, Turn
 
 AGENT = "codex"
@@ -358,3 +360,17 @@ def _iso_ms(value: str | None) -> int | None:
     if not value:
         return None
     return int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp() * 1000)
+
+
+def _answer(done) -> Answer:
+    """`exec` prints only the answer on stdout, and a header naming the model on stderr."""
+    found = re.search(r"^model: (\S+)", done.stderr or "", re.MULTILINE)
+    return Answer(done.stdout.strip(), found.group(1) if found else None)
+
+
+# Explanations (see explain.py): `exec` reads the prompt from stdin; nothing saved, read-only, low
+# reasoning effort to spend little.
+EXPLAINER = Explainer(
+    "codex", AGENT, None, stdin=True, answer=_answer,
+    command=lambda prompt: ["codex", "exec", "--ephemeral", "--skip-git-repo-check", "--sandbox", "read-only",
+                            "--color", "never", "-c", 'model_reasoning_effort="low"', "-"])

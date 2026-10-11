@@ -140,6 +140,18 @@ body {
 .tint-strong {
   background: color-mix(in oklab, var(--c) 16%, transparent);
 }
+/* words of a prompt that name what the change touched; --c is the agent's colour when set */
+.mark {
+  background: color-mix(in oklab, var(--c, var(--you)) 24%, transparent);
+  box-shadow: inset 0 -1.5px 0 color-mix(in oklab, var(--c, var(--you)) 70%, transparent);
+}
+/* generated text: a soft gradient edge sets it apart from the record */
+.generated {
+  background:
+    linear-gradient(var(--panel), var(--panel)) padding-box,
+    linear-gradient(135deg, color-mix(in oklab, var(--c) 55%, transparent), var(--edge) 55%) border-box;
+  border: 1px solid transparent;
+}
 
 .skeleton {
   background: linear-gradient(90deg, var(--sunken) 0%, var(--edge) 50%, var(--sunken) 100%);

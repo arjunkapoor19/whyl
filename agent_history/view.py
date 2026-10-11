@@ -1,7 +1,8 @@
 """`ah view`: the history in a browser.
 
 A small local server: the viewer's page (built from `web/` into `static/`) and a read-only
-JSON API over the same functions the terminal uses, so both always tell the same story.
+JSON API over the same functions the terminal uses, so both always tell the same story. The
+one write is asking an agent CLI to explain turns (POST, with a header other sites can't send).
 It listens on 127.0.0.1 only and answers only requests addressed to it by that name
 (`Host` checked, which stops DNS rebinding). The page opens at once; agent logs are
 synced in the background every few seconds, and the page follows any change to the
@@ -22,11 +23,12 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
-from agent_history import model, sources
+from agent_history import explain, model, sources
 from agent_history.blame import (HUNK_HEADER, Author, added_line_at, blame, delegation,
-                                 observed_file_changes, story)
+                                 observed_file_changes, story, thinking)
 from agent_history.model import Event, FileChange
-from agent_history.present import author_name, outline, relative
+from agent_history.present import (Brief, author_name, highlights, outline, prompt_text, relative, turns_around,
+                                   work)
 from agent_history.store import Store
 
 STATIC = Path(__file__).parent / "static"
@@ -89,19 +91,78 @@ def story_view(store: Store, path: str, number: int) -> dict[str, Any]:
     origin = line.origin
     session = store.find_session(origin.session_id)
     cwd = session["cwd"] if session else None
-    top, chain = delegation(store, store.turn(origin.turn_id) if origin.turn_id else None)
+    turn = store.turn(origin.turn_id) if origin.turn_id else None
+    top, chain = delegation(store, turn)
     told = story(store, origin)
     steps = []
     for event in told.steps:
         step = _step(event, cwd, result.path, line.born if event.id == origin.id else None)
         if step is not None:
             steps.append(step)
+    prompt = prompt_text(top["input_text"] if chain and top else told.prompt)
+    code = [text.lstrip("+ ") for c in origin.file_changes if c.path == result.path
+            for text in (c.diff or "").splitlines() if not text.startswith(("-", "@@"))]
+    done = work(turn, told.steps)
+    earlier, later = turns_around(store, top) if top is not None else ([], [])
+    saved = store.explanations([b.id for b in earlier + later] + ([top["id"]] if top else []))
     return {**base, "kind": "agent", "cwd": cwd, "agent_version": session["agent_version"] if session else None,
-            "prompt": (top["input_text"] if chain and top else told.prompt),
-            "handoffs": [{"thread": thread, "prompt": prompt} for thread, prompt in chain],
-            "observed": author.observation is not None, "hidden_before": told.hidden_before, "steps": steps,
+            "prompt": prompt, "highlights": highlights(prompt, code, result.path),
+            "handoffs": [{"thread": thread, "prompt": handed} for thread, handed in chain],
+            "observed": author.observation is not None, "steps": steps,
+            "reasons": [{"kind": r.kind, "step": r.event.id, "at": r.event.started_at, "text": _reason_text(r)}
+                        for r in told.reasons],
+            "check": told.check.id if told.check else None,
+            "final": told.final.id if told.final else None,
+            "work": {"took": done.took, "steps": done.steps, "tests": done.tests,
+                     "files": [{"path": f, "rel": relative(f, cwd), "added": a, "removed": r}
+                               for f, a, r in done.files]},
+            "turn": {"id": top["id"], "seq": top["seq"], "status": top["status"]} if top else None,
+            "explanation": _explanation(saved.get(top["id"])) if top else None,
+            "explainer": _explainer(session),
+            "earlier": [_brief(b, saved.get(b.id), cwd) for b in earlier],
+            "later": [_brief(b, saved.get(b.id), cwd) for b in later],
             "history": [{"author": _author(store, who, _author_key(who)) if who else None, "text": text}
                         for who, text in line.history] if line.rewrites else []}
+
+
+def _reason_text(reason) -> str:
+    event = reason.event
+    if reason.kind == "note":
+        return event.payload.get("description") or ""
+    if reason.kind == "thought":
+        return thinking(event)
+    if reason.kind == "said":
+        return event.payload.get("text") or ""
+    step = outline(event)
+    return step.summary or step.status or "" if step else ""
+
+
+def _brief(brief: Brief, row, cwd: str | None) -> dict[str, Any]:
+    return {"id": brief.id, "seq": brief.seq, "prompt": prompt_text(brief.prompt), "status": brief.status,
+            "started_at": brief.started_at, "ended_at": brief.ended_at, "steps": brief.steps,
+            "files": [relative(f, cwd) for f in brief.files], "explanation": _explanation(row)}
+
+
+def _explanation(row) -> dict[str, Any] | None:
+    if row is None:
+        return None
+    return {"text": row["text"], "error": row["error"], "by": row["by"], "at": row["created_at"]}
+
+
+def _explainer(session) -> str | None:
+    """Which CLI would write this session's explanations, or None when there is none to ask."""
+    try:
+        chosen = explain.pick(sources.EXPLAINERS, session["agent"] if session else None)
+    except explain.ExplainError:
+        return None
+    return chosen.label if chosen else None
+
+
+def explain_view(store: Store, turn_ids: list[str], again: bool) -> dict[str, Any]:
+    """Explain the given turns (those that need it) and return each one's explanation."""
+    turns = [t for t in (store.turn(i) for i in turn_ids) if t is not None]
+    saved = explain.explain(store, sources.EXPLAINERS, turns, again=again)
+    return {t["id"]: _explanation(saved.get(t["id"])) for t in turns}
 
 
 def sessions_view(store: Store) -> list[dict[str, Any]]:
@@ -115,6 +176,7 @@ def session_view(store: Store, query: str) -> dict[str, Any]:
     if session is None:
         raise LookupError(f"no session matching '{query}'")
     events = store.events(session_id=session["id"])
+    saved = store.explanations([t["id"] for t in store.turns(session["id"])])
     turns = []
     for turn in store.turns(session["id"]):
         top, chain = delegation(store, turn)
@@ -122,8 +184,10 @@ def session_view(store: Store, query: str) -> dict[str, Any]:
                                    for e in events if e.turn_id == turn["id"]) if step is not None]
         turns.append({"id": turn["id"], "seq": turn["seq"], "status": turn["status"], "thread": turn["thread_id"],
                       "started_at": turn["started_at"], "ended_at": turn["ended_at"], "input": turn["input_text"],
-                      "delegated_from": top["id"] if chain and top else None, "steps": steps})
+                      "delegated_from": top["id"] if chain and top else None, "steps": steps,
+                      "explanation": _explanation(saved.get(turn["id"]))})
     return {"id": session["id"], "agent": session["agent"], "agent_version": session["agent_version"],
+            "explainer": _explainer(session),
             "cwd": session["cwd"], "started_at": session["started_at"], "ended_at": session["ended_at"],
             "outcome": session["outcome"], "turns": turns}
 
@@ -157,7 +221,7 @@ def _step(event: Event, cwd: str | None, blamed_path: str | None, blamed_at: int
         return None
     out: dict[str, Any] = {"id": event.id, "at": event.started_at, "ended_at": event.ended_at,
                            "label": step.label, "title": step.title, "status": step.status,
-                           "summary": step.summary, "origin": blamed_at is not None}
+                           "summary": step.summary, "note": step.note, "origin": blamed_at is not None}
     if event.kind == model.COMMAND and not links:
         output = event.payload.get("output") or ""
         out.update(exit_code=event.payload.get("exit_code"), output=output[-OUTPUT_LIMIT:],
@@ -285,6 +349,25 @@ class Handler(BaseHTTPRequestHandler):
         if url.path.startswith("/api/"):
             return self._api(url.path[len("/api/"):], {k: v[0] for k, v in parse_qs(url.query).items()})
         return self._static(url.path)
+
+    def do_POST(self) -> None:
+        """Only for asking an agent CLI to explain turns. Pages from other sites can't send the custom
+        header without a CORS preflight, which this server never answers, so they can't spend it."""
+        if self.headers.get("Host") not in self.server.hosts or self.headers.get("X-AH") != "1" \
+                or urlsplit(self.path).path != "/api/explain":
+            return self._send(403, b"forbidden", "text/plain")
+        try:
+            size = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(min(size, 100_000)) or b"{}")
+            turns = body.get("turns")
+            if not isinstance(turns, list) or not all(isinstance(t, str) for t in turns) or len(turns) > 200:
+                raise ValueError("expected {\"turns\": [turn ids]}")
+            data = self._read(lambda store: explain_view(store, turns, bool(body.get("again"))))
+        except explain.ExplainError as error:
+            return self._json(502, {"error": str(error)})
+        except ValueError as error:
+            return self._json(400, {"error": str(error)})
+        self._json(200, data)
 
     def _api(self, route: str, query: dict[str, str]) -> None:
         server = self.server

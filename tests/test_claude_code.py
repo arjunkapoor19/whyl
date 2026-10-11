@@ -202,7 +202,7 @@ def test_cli_story_marks_the_exact_line(tmp_path, transcript, capsys):
     assert "written by claude-code" in out
     assert "  read     shop.py\n" in out
     assert "test     ✗ python3 -m unittest -q  → 1 test, 1 errored · ImportError" in out
-    detail = " " * 21 + "│ "
+    detail = "  │ "
     assert detail + "+def median(prices):   ← this line\n" in out
     assert out.count("   ← this line") == 1  # exactly one diff line is marked
     # Blank added lines just above don't steal the mark.

@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from agent_history import model
+from agent_history.explain import Answer, ExplainError, Explainer
 from agent_history.model import Event, FileChange, NormalizedSession, Session, Thread, Turn
 
 AGENT = "claude-code"
@@ -327,3 +328,23 @@ def _ms(value: str | None) -> int | None:
         return int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp() * 1000)
     except ValueError:
         return None
+
+
+def _answer(done) -> Answer:
+    """`--output-format json` gives the answer and the exact model that wrote it."""
+    try:
+        found = json.loads(done.stdout)
+    except ValueError:
+        found = None
+    if not isinstance(found, dict) or found.get("is_error") or not isinstance(found.get("result"), str):
+        detail = found.get("result") if isinstance(found, dict) and found.get("result") else done.stdout
+        raise ExplainError(f"claude failed: {' '.join(str(detail).split())[:300]}")
+    return Answer(found["result"].strip(), next(iter(found.get("modelUsage") or {}), None))
+
+
+# Explanations (see explain.py): print mode, the small model, no tools, nothing saved.
+EXPLAINER = Explainer(
+    "claude", AGENT, "haiku", stdin=True, answer=_answer,
+    command=lambda prompt: ["claude", "-p", "--model", "haiku", "--no-session-persistence", "--tools", "",
+                            "--output-format", "json",
+                            "--system-prompt", "You write short, factual explanations of recorded coding-agent work."])

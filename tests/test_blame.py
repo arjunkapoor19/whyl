@@ -4,8 +4,9 @@ import pytest
 
 from agent_history import model
 from agent_history.adapters.codex import normalize
-from agent_history.blame import Line, apply_hunks, blame, replay, story
+from agent_history.blame import Line, apply_hunks, blame, reasons, replay, story, thinking
 from agent_history.model import Event, FileChange, NormalizedSession, Session, Thread, Turn
+from agent_history.present import highlights
 from agent_history.store import Store
 
 FIXTURES = Path(__file__).parent / "fixtures" / "codex"
@@ -131,7 +132,6 @@ def test_story_tells_the_whole_turn(tmp_path):
 
     told = story(store, line.origin)
     assert told.prompt.startswith("apply_discount in shop.py is buggy")
-    assert told.hidden_before == 0
     steps = [(e.kind, e.status) for e in told.steps]
     origin_at = told.steps.index(line.origin)
     # Before the fix: the test file is written, tests fail, the weak test is strengthened, tests fail again.
@@ -146,3 +146,41 @@ def test_story_tells_the_whole_turn(tmp_path):
     assert after[-1].payload["phase"] == "final"
     assert all(e.turn_id == line.origin.turn_id for e in told.steps)
     assert (model.TOKEN_USAGE, None) not in steps
+    # Why: what the agent said since the file last changed, and the failing run just before.
+    assert [(r.kind, r.event.seq) for r in told.reasons] == [
+        ("said", next(e.seq for e in reversed(before) if e.kind == model.AGENT_MESSAGE)),
+        ("failing", [e for e in before if e.kind == model.COMMAND][-1].seq)]
+    assert told.check is after[0] and told.final is after[-1]
+
+
+def test_reasons_come_from_since_the_file_last_changed():
+    def event(seq, kind, payload, status="completed", changes=()):
+        return model.Event(f"e{seq}", "s", "t", "u", seq, kind, status, seq * 1000, seq * 1000, payload,
+                           file_changes=[model.FileChange(path, model.UPDATE, "") for path in changes])
+    failing = {"command": "python3 -m pytest", "exit_code": 1, "output": "1 failed"}
+    steps = [
+        event(1, model.AGENT_MESSAGE, {"text": "First I'll look around."}),
+        event(2, model.FILE_CHANGE, {}, changes=["/w/a.py"]),
+        event(3, model.REASONING, {"summary": [], "content": ["The test fails because of rounding."]}),
+        event(4, model.AGENT_MESSAGE, {"text": "Fixing the rounding."}),
+        event(5, model.COMMAND, failing, status="failed"),
+        event(6, model.FILE_CHANGE, {}, changes=["/w/b.py"]),  # another file: doesn't reset the window
+        event(7, model.COMMAND, {"command": "sed -i s/x/y/ a.py", "description": "Round half up", "exit_code": 0},
+              changes=["/w/a.py"]),
+    ]
+    told = reasons(steps, steps[-1])
+    assert [(r.kind, r.event.seq) for r in told] == [("note", 7), ("thought", 3), ("said", 4), ("failing", 5)]
+    assert thinking(steps[2]) == "The test fails because of rounding."
+    # A passing run isn't a reason, and nothing from before the file's previous change counts.
+    steps[4] = event(5, model.COMMAND, {**failing, "exit_code": 0, "output": "1 passed"})
+    steps[6].payload.pop("description")
+    assert [r.kind for r in reasons(steps, steps[-1])] == ["thought", "said"]
+    assert reasons(steps[:3] + [steps[-1]], steps[-1])[0].event.seq == 3
+
+
+def test_prompt_words_that_name_the_change():
+    code = ["def multiply_arrays(a, b):", "    if len(a) != len(b):"]
+    assert highlights("Add an array multiplication at the end of shop.py", code, "/w/shop.py") == \
+        ["array", "multiplication", "shop.py"]
+    assert highlights("the checkout total is wrong, fix the bug", ["def applyDiscount(price):"], "/w/x.py") == []
+    assert highlights("make applyDiscount round", ["def applyDiscount(price):"], "/w/x.py") == ["applyDiscount"]

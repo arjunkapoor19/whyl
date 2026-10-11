@@ -206,7 +206,7 @@ def test_blame_attributes_lines_to_opencode(tmp_path, capsys):
 
     assert main(["--db", str(tmp_path / "h.db"), "blame", f"{repo}/shop.py:6"]) == 0
     out = capsys.readouterr().out
-    assert "written by opencode" in out and 'You asked: "Add median() with a test."' in out
+    assert "written by opencode" in out and "YOU ASKED\n  Add median() with a test.\n" in out
     assert "+    return sorted(prices)[len(prices) // 2]   ← this line" in out
     assert "test     ✗ python3 -m pytest -q" in out
 
@@ -310,7 +310,7 @@ def test_sub_agent_edits_blame_to_the_parent_session(tmp_path, capsys):
     assert main(["--db", str(tmp_path / "h.db"), "blame", f"{repo}/shop.py:6"]) == 0
     out = capsys.readouterr().out
     assert f"session {SESSION} · turn 1 › sub-agent 22222222 ·" in out
-    assert 'You asked: "Add median(); use a sub-agent."\n' \
+    assert "YOU ASKED\n  Add median(); use a sub-agent.\n" \
            '  → handed to sub-agent 22222222: "Add median() to shop.py"' in out
     assert main(["--db", str(tmp_path / "h.db"), "log", SESSION]) == 0
     assert "turn 1  completed  6.0s  sub-agent 22222222, from turn 1\n" in capsys.readouterr().out

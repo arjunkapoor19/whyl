@@ -43,6 +43,7 @@ export type Step = {
   title: string
   status: string | null
   summary: string | null
+  note: string | null // the agent's own one-line description of the step
   origin: boolean
   exit_code?: number | null
   output?: string
@@ -66,12 +67,47 @@ export type Story = {
       agent_version: string | null
       prompt: string | null
       handoffs: { thread: string; prompt: string | null }[]
+      highlights: string[] // words of the prompt that name what the change touched
       observed: boolean
-      hidden_before: number
-      steps: Step[]
+      steps: Step[] // the whole turn
+      reasons: Reason[]
+      check: string | null // the step that tested the change, if any
+      final: string | null // the step with the agent's conclusion
+      work: Work
+      turn: { id: string; seq: number; status: string | null } | null
+      explanation: Explanation | null
+      explainer: string | null // the CLI that would write explanations, or null if none is installed
+      earlier: Brief[]
+      later: Brief[]
       history: { author: Author | null; text: string }[]
     }
 )
+
+/** Something recorded before a change that may say why it was made. */
+export type Reason = { kind: "note" | "thought" | "said" | "failing"; step: string; at: number | null; text: string }
+
+export type Work = {
+  took: number | null
+  steps: number
+  tests: ("passed" | "failed")[]
+  files: { path: string; rel: string; added: number; removed: number }[]
+}
+
+/** Another turn of the same session, in one line. */
+export type Brief = {
+  id: string
+  seq: number
+  prompt: string | null
+  status: string | null
+  started_at: number | null
+  ended_at: number | null
+  steps: number
+  files: string[]
+  explanation: Explanation | null
+}
+
+/** A turn explained in plain language by an agent CLI: generated text, not the record. */
+export type Explanation = { text: string | null; error: string | null; by: string; at: number }
 
 export type FileEntry = { path: string; root: string; changes: number; agents: string[]; last_changed: number | null }
 
@@ -100,9 +136,10 @@ export type Turn = {
   input: string | null
   delegated_from: string | null
   steps: SessionStep[]
+  explanation: Explanation | null
 }
 
-export type Session = Omit<SessionSummary, "turns" | "first_input"> & { turns: Turn[] }
+export type Session = Omit<SessionSummary, "turns" | "first_input"> & { turns: Turn[]; explainer: string | null }
 
 export type Status = {
   syncing: boolean
@@ -208,4 +245,66 @@ export const api = {
   blame: (path: string) => `/api/blame?path=${encodeURIComponent(path)}`,
   story: (path: string, line: number) => `/api/story?path=${encodeURIComponent(path)}&line=${line}`,
   session: (id: string) => `/api/sessions/${encodeURIComponent(id)}`,
+}
+
+// -- explanations: written by an agent CLI on request, once per turn (the server keeps them) -----
+
+const asked = new Map<string, Promise<Record<string, Explanation | null>>>()
+
+/** Ask the server to explain turns. Identical requests in flight are shared, so nothing is paid for twice. */
+export function explain(turns: string[], again = false): Promise<Record<string, Explanation | null>> {
+  const key = `${again ? "again:" : ""}${[...turns].sort().join(",")}`
+  let request = asked.get(key)
+  if (!request) {
+    request = fetch("/api/explain", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-AH": "1" },
+      body: JSON.stringify({ turns, again }),
+    }).then(async (response) => {
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new ApiError(body.error ?? `${response.status} ${response.statusText}`, response.status)
+      return body
+    })
+    request.finally(() => asked.delete(key)).catch(() => {})
+    asked.set(key, request)
+  }
+  return request
+}
+
+export type Explained = {
+  get: (turn: string) => Explanation | null
+  waiting: (turn: string) => boolean
+  /** asked, and nothing came back: the turn hasn't finished */
+  unfinished: (turn: string) => boolean
+  failure: string | null
+  missing: (turns: string[]) => string[]
+  ask: (turns: string[], again?: boolean) => void
+}
+
+/** Explanations for `turns`: those already written, and the rest only when `ask` is called (a
+ * person pressed a button), so no agent CLI is used unless asked. One `ask` is one request. */
+export function useExplanations(turns: { id: string; explanation: Explanation | null }[]): Explained {
+  const [got, setGot] = useState<Record<string, Explanation | null>>({})
+  const [busy, setBusy] = useState<Set<string>>(new Set())
+  const [failure, setFailure] = useState<string | null>(null)
+  const known = new Map(turns.map((t) => [t.id, got[t.id] ?? t.explanation]))
+
+  const ask = (ids: string[], again = false) => {
+    if (!ids.length) return
+    setBusy((b) => new Set([...b, ...ids]))
+    setFailure(null)
+    explain(ids, again).then(
+      (result) => setGot((g) => ({ ...g, ...Object.fromEntries(ids.map((id) => [id, result[id] ?? null])) })),
+      (error: Error) => setFailure(error.message),
+    ).finally(() => setBusy((b) => new Set([...b].filter((id) => !ids.includes(id)))))
+  }
+
+  return {
+    get: (turn) => known.get(turn) ?? null,
+    waiting: (turn) => busy.has(turn),
+    unfinished: (turn) => turn in got && got[turn] === null,
+    failure,
+    missing: (ids) => ids.filter((id) => !known.get(id)?.text && !busy.has(id)),
+    ask,
+  }
 }

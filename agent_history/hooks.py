@@ -32,6 +32,7 @@ from agent_history import workspace
 from agent_history.store import Store
 
 EVENTS = ("pre", "post", "stop")
+OFF = "AH_HOOKS"  # set to "off" for agent runs ah starts itself (explanations): nothing to observe
 
 
 @dataclass
@@ -112,6 +113,8 @@ def handle(store: Store, agent: str, event: str, payload: dict[str, Any], now: i
 def run(agent: str, event: str, stdin: str, db_path: str | Path) -> int:
     """Entry point for `ah hook`. Never fails and never prints: errors go to hooks.log."""
     db_path = Path(db_path)
+    if os.environ.get(OFF) == "off":
+        return 0
     try:
         if agent not in PARSERS or event not in EVENTS:
             raise ValueError(f"unknown hook {agent} {event}")

@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from agent_history import model
+from agent_history.explain import Answer, ExplainError, Explainer, quietly
 from agent_history.model import Event, FileChange, NormalizedSession, Session, Thread, Turn
 
 AGENT = "opencode"
@@ -308,3 +309,33 @@ def _json(text: str) -> dict[str, Any]:
     except ValueError:
         return {}
     return value if isinstance(value, dict) else {}
+
+
+def _answer(done) -> Answer:
+    """`opencode run --format json` prints one event per line; the answer is its text parts. It
+    doesn't name the model, so it is read from the saved session, which is then deleted."""
+    texts, session = [], None
+    for line in done.stdout.splitlines():
+        event = _json(line)
+        session = session or event.get("sessionID")
+        if event.get("type") == "text":
+            texts.append((event.get("part") or {}).get("text") or "")
+    return Answer("".join(texts).strip(), _model_and_delete(session) if session else None)
+
+
+def _model_and_delete(session: str) -> str | None:
+    try:
+        exported = quietly(["opencode", "export", session], timeout=60).stdout
+        quietly(["opencode", "session", "delete", session], timeout=60)
+    except ExplainError:  # the answer stands without its model
+        return None
+    found = _json(exported[exported.find("{"):])
+    models = [m.get("info", {}).get("modelID") for m in found.get("messages") or [] if isinstance(m, dict)]
+    return next((m for m in reversed(models) if m), None)
+
+
+# Explanations (see explain.py): no plugins (so not ah's), the person's default model. opencode
+# saves the session; ah deletes it once read, and never syncs sessions from its own explain folder.
+EXPLAINER = Explainer(
+    "opencode", AGENT, None, answer=_answer,
+    command=lambda prompt: ["opencode", "run", "--pure", "--format", "json", prompt])

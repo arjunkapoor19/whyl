@@ -121,7 +121,7 @@ def test_cli_blame_syncs_automatically(tmp_path, codex_home, capsys):
     assert main(["--db", db, "blame", "/workspace/shop.py:6"]) == 0
     captured = capsys.readouterr()
     assert "synced 1 new or updated sessions (codex-log: 1)" in captured.err
-    assert "▶" in captured.out and "edit     ~shop.py" in captured.out
+    assert "▶" in captured.out and "edit     shop.py +1 −1" in captured.out
 
     assert main(["--db", db, "log"]) == 0
     assert "synced" not in capsys.readouterr().err  # nothing new the second time

@@ -29,8 +29,6 @@ from agent_history.store import Store
 from agent_history.workspace import Blobs, unified_diff
 
 HUNK_HEADER = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
-STORY_BEFORE = 12  # steps shown before the change; older ones are counted, not shown
-STORY_AFTER = 6  # steps shown after the change while waiting for a test run
 
 
 OBSERVED = "obs:"  # origin prefix for lines written in an observed change: "obs:<observation id>"
@@ -44,12 +42,24 @@ class Line:
     born: int | None = None  # its line number in the file right after `origin` wrote it
 
 
+NOTE, THOUGHT, SAID, FAILING = "note", "thought", "said", "failing"
+
+
+@dataclass
+class Reason:
+    """Something recorded before a change that may say why it was made."""
+    kind: str  # NOTE | THOUGHT | SAID | FAILING
+    event: Event
+
+
 @dataclass
 class Story:
-    """The turn that wrote a line, as an ordered list of steps."""
+    """The turn that wrote a line: every step in order, and what the record says around the change."""
     prompt: str | None
-    steps: list[Event]  # includes the origin event itself
-    hidden_before: int  # earlier steps left out
+    steps: list[Event]  # the whole turn, the origin included
+    reasons: list[Reason]  # the agent's note on the step, then what came since the file last changed
+    check: Event | None  # the first test run at or after the change that reported results (else the first)
+    final: Event | None  # the agent's last word in the turn
 
 
 @dataclass
@@ -264,33 +274,60 @@ def observed_file_changes(store: Store, observation_id: int) -> list[model.FileC
 
 
 def story(store: Store, origin: Event) -> Story:
-    """The origin's turn: steps leading up to the change, the change, then up to the next test run."""
+    """The origin's turn, with the reasons the record gives for the change and how it was checked."""
     turn = store.turn(origin.turn_id) if origin.turn_id else None
-    steps = [e for e in store.events(turn_id=origin.turn_id) if _worth_showing(e)] if turn else [origin]
-    before = [e for e in steps if e.seq < origin.seq]
-    after: list[Event] = []
-    for event in (e for e in steps if e.seq > origin.seq):
-        if len(after) == STORY_AFTER:
-            break
-        after.append(event)
-        if event.kind == model.COMMAND and commands.verdict(event.payload, event.status):
-            break
-    final = next((e for e in reversed(steps) if e.kind == model.AGENT_MESSAGE
-                  and e.payload.get("phase") == "final"), None)
-    if final is not None and final.seq > origin.seq and final not in after:
-        after.append(final)
-    shown = before[-STORY_BEFORE:]
-    for event in shown + [origin] + after:  # what ah saw each step change replaces what the agent reported
+    events = store.events(turn_id=origin.turn_id) if turn else []
+    steps = [origin if e.id == origin.id else e for e in events if e.id == origin.id or _worth_showing(e)] or [origin]
+    for event in steps:  # what ah saw each step change replaces what the agent reported
         observation = store.observation_for(event)
         if observation is not None:
             event.file_changes = observed_file_changes(store, observation["id"])
-    return Story(turn["input_text"] if turn else None, shown + [origin] + after, len(before) - len(shown))
+    runs = [e for e in steps if e.seq >= origin.seq and e.kind == model.COMMAND and commands.verdict(e.payload, e.status)]
+    check = next((e for e in runs if commands.summarize(e.payload, e.status)), runs[0] if runs else None)
+    final = next((e for e in reversed(steps) if e.kind == model.AGENT_MESSAGE
+                  and e.payload.get("phase") == "final"), None)
+    return Story(turn["input_text"] if turn else None, steps, reasons(steps, origin), check, final)
+
+
+def reasons(steps: list[Event], origin: Event) -> list[Reason]:
+    """What may explain a change: the agent's own note on the step, then, since the same files last
+    changed, its last thought, the last thing it said, and the last test run if it failed.
+    These are what came before; order is not proof of cause."""
+    out = [Reason(NOTE, origin)] if origin.payload.get("description") else []
+    paths = {c.path for c in origin.file_changes}
+    before = [e for e in steps if e.seq < origin.seq]
+    since = next((i + 1 for i in range(len(before) - 1, -1, -1)
+                  if paths & {c.path for c in before[i].file_changes}), 0)
+    window = before[since:]
+    thought = next((e for e in reversed(window) if e.kind == model.REASONING and thinking(e)), None)
+    said = next((e for e in reversed(window) if e.kind == model.AGENT_MESSAGE and e.payload.get("text")), None)
+    test = next((e for e in reversed(window) if e.kind == model.COMMAND
+                 and commands.verdict(e.payload, e.status)), None)
+    out += [Reason(kind, e) for kind, e in ((THOUGHT, thought), (SAID, said), (FAILING, test)) if e is not None
+            and (kind != FAILING or commands.verdict(e.payload, e.status) == "failed")]
+    return out
+
+
+def thinking(event: Event) -> str:
+    """A reasoning event's text: its summary when the agent gave one, else its full content."""
+    parts = event.payload.get("summary") or event.payload.get("content") or []
+    return "\n\n".join(str(part) for part in parts if part).strip()
+
+
+def diff_stats(change: model.FileChange) -> tuple[int, int]:
+    """Lines added and removed by a change (a new file's lines all count as added)."""
+    if change.kind == model.ADD:
+        return len((change.diff or "").splitlines()), 0
+    lines = (change.diff or "").splitlines()
+    added = sum(1 for line in lines if line.startswith("+") and not line.startswith("+++"))
+    removed = sum(1 for line in lines if line.startswith("-") and not line.startswith("---"))
+    return added, removed
 
 
 def _worth_showing(event: Event) -> bool:
     if event.kind in (model.TOKEN_USAGE, model.USER_MESSAGE):
         return False
-    return event.kind != model.REASONING or bool(event.payload.get("summary"))
+    return event.kind != model.REASONING or bool(thinking(event))
 
 
 def delegation(store: Store, turn: sqlite3.Row | None) -> tuple[sqlite3.Row | None, list[tuple[str, str | None]]]:

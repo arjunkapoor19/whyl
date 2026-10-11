@@ -1,7 +1,8 @@
 import { useMemo } from "react"
-import { api, useApi, type Session, type SessionStep, type Turn } from "../api"
+import { api, useApi, useExplanations, type Explained, type Session, type SessionStep, type Turn } from "../api"
 import { AgentChip, Pill, short, statusTone } from "../components/Chip"
 import { Icon } from "../components/Icon"
+import { Explanation, SummarizeButton } from "../components/StoryDrawer"
 import { Prose, shorten } from "../components/Timeline"
 import { nameColor } from "../lib/colors"
 import { href } from "../lib/router"
@@ -21,13 +22,14 @@ export function SessionView({ id }: { id: string }) {
     }
     return { top, children }
   }, [data])
+  const explained = useExplanations(nested.top)
 
   if (error) return <Empty title="No such session">{error.message}</Empty>
   if (!data) return <div className="mx-auto max-w-3xl p-8"><div className="skeleton h-64 w-full rounded-xl" /></div>
   const name = data.agent.split("-")[0]
   const color = nameColor(name)
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full overflow-y-auto" style={{ "--c": color } as React.CSSProperties}>
       <div className="mx-auto max-w-3xl px-5 py-8 md:px-8">
         <header className="animate-rise mb-6">
           <div className="flex flex-wrap items-center gap-2">
@@ -42,11 +44,17 @@ export function SessionView({ id }: { id: string }) {
             {duration(data.started_at, data.ended_at) && <span>{duration(data.started_at, data.ended_at)}</span>}
             <span>{nested.top.length} {nested.top.length === 1 ? "turn" : "turns"}</span>
           </div>
+          {data.explainer && nested.top.length > 1 && (
+            <div className="mt-3">
+              <SummarizeButton turns={nested.top.map((t) => t.id)} explained={explained} explainer={data.explainer}
+                label={`Summarize all ${nested.top.length} turns`} />
+            </div>
+          )}
         </header>
         <div className="space-y-4">
           {nested.top.map((turn, i) => (
             <div key={turn.id} className="animate-rise [animation-fill-mode:backwards]" style={{ animationDelay: `${i * 50}ms` }}>
-              <TurnCard turn={turn} color={color} cwd={data.cwd} />
+              <TurnCard turn={turn} color={color} cwd={data.cwd} explained={explained} explainer={data.explainer} />
               {(nested.children.get(turn.id) ?? []).map((sub) => (
                 <div key={sub.id} className="relative mt-2 ml-6 border-l-2 pl-4" style={{ borderColor: `color-mix(in oklab, ${color} 45%, transparent)` }}>
                   <TurnCard turn={sub} color={color} cwd={data.cwd} sub />
@@ -60,7 +68,9 @@ export function SessionView({ id }: { id: string }) {
   )
 }
 
-function TurnCard({ turn, color, cwd, sub = false }: { turn: Turn; color: string; cwd: string | null; sub?: boolean }) {
+function TurnCard({ turn, color, cwd, sub = false, explained, explainer = null }: {
+  turn: Turn; color: string; cwd: string | null; sub?: boolean; explained?: Explained; explainer?: string | null
+}) {
   const steps = turn.steps.filter((s) => s.label !== "user")
   return (
     <article className="overflow-hidden rounded-xl border border-edge bg-panel">
@@ -82,6 +92,11 @@ function TurnCard({ turn, color, cwd, sub = false }: { turn: Turn; color: string
         <div className="border-b border-edge px-3.5 py-2.5">
           <div className="mb-0.5 text-[10.5px] font-semibold tracking-[0.08em] text-ink-3 uppercase">{sub ? "Asked to" : "You asked"}</div>
           <Prose text={turn.input.replace(/^[▎\s]+/, "")} clamp />
+        </div>
+      )}
+      {explained && (
+        <div className="border-b border-edge px-3.5 py-2.5 empty:hidden">
+          <Explanation id={turn.id} explained={explained} explainer={explainer} status={turn.status} />
         </div>
       )}
       <ol className="px-2 py-1.5">
@@ -121,7 +136,7 @@ function StepRow({ step, cwd }: { step: SessionStep; cwd: string | null }) {
           </span>
         ) : (
           <span className={`block truncate ${mono ? "font-mono text-[11.5px]" : "text-[12.5px]"} ${step.label === "answer" ? "font-medium" : ""}`}>
-            {(mono ? shorten(step.title, cwd) : step.title).split("\n")[0]}
+            {(mono ? shorten(step.title, cwd) : step.title.replace(/\[([^\]\n]+)\]\([^)\s]+\)/g, "$1").replace(/[`*]/g, "")).split("\n")[0]}
           </span>
         )}
         {step.summary && step.label !== "edit" && (

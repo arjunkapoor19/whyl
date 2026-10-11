@@ -45,6 +45,15 @@ def test_story_view_marks_the_line(store):
     assert change["rel"] == "shop.py" and change["lines"][change["marked"]] == "+    return price * (1 - percent / 100)"
     tests = [step for step in data["steps"] if step["label"] == "test"]
     assert tests and tests[-1]["summary"] == "3 tests passed" and "output" in tests[-1]
+    # Why, how it was checked, the turn at a glance, its conclusion, and the session around it.
+    assert data["highlights"] == ["apply_discount", "shop.py"]
+    assert [(r["kind"], r["text"]) for r in data["reasons"]][1] == ("failing", "3 tests, 2 failed · AssertionError: -25 != 0")
+    assert data["reasons"][0]["text"].endswith("I’ll correct `apply_discount`.")
+    assert data["check"] == tests[-1]["id"] and data["final"] == data["steps"][-1]["id"]
+    assert data["work"]["tests"] == ["failed", "failed", "passed"]  # `python`, not found, ran no tests
+    assert {f["rel"]: (f["added"], f["removed"]) for f in data["work"]["files"]}["shop.py"] == (1, 1)
+    assert data["turn"]["seq"] == 1 and data["earlier"] == [] and data["later"][0]["seq"] == 2
+    assert data["later"][0]["prompt"].startswith("average crashes on an empty list")
     with pytest.raises(LookupError):
         view.story_view(store, SHOP, 999)
 
@@ -116,7 +125,9 @@ def test_server_serves_the_page_and_the_api(server):
 def test_server_refuses_other_hosts_writes_and_escapes(server):
     assert get(server, "/api/sessions", host="evil.example")[0].status == 403  # DNS rebinding
     assert get(server, "/api/sessions", host=f"evil.example:{server.port}")[0].status == 403
-    assert get(server, "/api/sessions", method="POST")[0].status == 501
+    assert get(server, "/api/sessions", method="POST")[0].status == 403
+    assert get(server, "/api/explain", method="POST")[0].status == 403  # without the X-AH header
+    assert get(server, "/api/sessions", method="PUT")[0].status == 501
     assert get(server, "/../../etc/passwd")[0].status == 404
     assert get(server, "/%2e%2e/%2e%2e/etc/passwd")[0].status == 404
 

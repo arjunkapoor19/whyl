@@ -90,9 +90,8 @@ def test_a_shell_edit_is_attributed_to_its_command(tmp_path, repo, store, capsys
     assert main(["--db", db, "blame", f"{repo}/shop.py:5"]) == 0
     out = capsys.readouterr().out
     assert "written by claude-code" in out and "observed by ah" in out
-    assert "command  ✓ printf" in out
-    assert " " * 21 + "changed shop.py:\n" in out
-    assert " " * 21 + "│ +def divide(a, b):   ← this line\n" in out
+    assert "▶ 10:01:00  command  printf" in out and "(shop.py +4 −0)" in out
+    assert "  │ +def divide(a, b):   ← this line\n" in out
 
     assert main(["--db", db, "blame", f"{repo}/shop.py"]) == 0
     out = capsys.readouterr().out

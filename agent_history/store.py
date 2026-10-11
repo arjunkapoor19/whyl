@@ -111,6 +111,14 @@ CREATE TABLE IF NOT EXISTS observed_changes (
     PRIMARY KEY (observation_id, idx)
 );
 CREATE INDEX IF NOT EXISTS observed_changes_by_path ON observed_changes(path);
+CREATE TABLE IF NOT EXISTS explanations (  -- kept across re-ingests: turn ids are stable
+    turn_id    TEXT PRIMARY KEY,
+    key        TEXT NOT NULL,  -- what the turn looked like when explained; one that grew is explained again
+    text       TEXT,           -- NULL when it failed
+    error      TEXT,
+    by         TEXT NOT NULL,  -- the explainer, e.g. its CLI and model
+    created_at INTEGER NOT NULL
+);
 """
 
 
@@ -123,6 +131,7 @@ class Store:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         self.objects_dir = path.parent / "objects"  # file contents seen in observed workspaces
+        self.explain_dir = path.parent / "explain"  # where agents run to write explanations (see explain.py)
         self.db = sqlite3.connect(path, timeout=10)  # hooks from parallel tool calls share the database
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys = ON")
@@ -367,6 +376,19 @@ class Store:
         self.db.executemany("INSERT INTO observed_changes VALUES (?,?,?,?,?,?)",
                             [(observation_id, start + i, c.path, c.kind, c.before, c.after)
                              for i, c in enumerate(changes)])
+
+    # -- explanations ---------------------------------------------------------
+
+    def explanations(self, turn_ids: list[str]) -> dict[str, sqlite3.Row]:
+        rows = self.db.execute(f"SELECT * FROM explanations WHERE turn_id IN ({','.join('?' * len(turn_ids))})",
+                               turn_ids).fetchall()
+        return {row["turn_id"]: row for row in rows}
+
+    def save_explanation(self, turn_id: str, key: str, text: str | None, error: str | None, by: str,
+                         created_at: int) -> None:
+        with self.db:
+            self.db.execute("INSERT OR REPLACE INTO explanations VALUES (?,?,?,?,?,?)",
+                            (turn_id, key, text, error, by, created_at))
 
     def counts(self) -> dict[str, int]:
         tables = ("sessions", "threads", "turns", "events", "file_changes")
