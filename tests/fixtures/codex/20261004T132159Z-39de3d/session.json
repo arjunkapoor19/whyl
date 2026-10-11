@@ -1,6 +1,6 @@
 {
   "recorder": {
-    "name": "agent-history-recorder",
+    "name": "whyl-recorder",
     "version": "0.2.0"
   },
   "codex": {

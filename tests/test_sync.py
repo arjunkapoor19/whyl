@@ -4,13 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from agent_history import model, sources
-from agent_history.adapters import codex
-from agent_history.blame import blame
-from agent_history.cli import main
-from agent_history.model import Event, FileChange, NormalizedSession, Session, Thread, Turn
-from agent_history.sources import FAILED, INGESTED, SKIPPED, Source
-from agent_history.store import Store
+from whyl import model, sources
+from whyl.adapters import codex
+from whyl.blame import blame
+from whyl.cli import main
+from whyl.model import Event, FileChange, NormalizedSession, Session, Thread, Turn
+from whyl.sources import FAILED, INGESTED, SKIPPED, Source
+from whyl.store import Store
 
 FIXTURES = Path(__file__).parent / "fixtures"
 SHOP_LOG = FIXTURES / "codex_rollout" / "rollout-2026-10-04T18-52-01-01a10714-203f-7172-a0a4-09521747b2ad.jsonl"

@@ -6,13 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from agent_history import model, sources
-from agent_history.adapters import claude_code, codex
-from agent_history.adapters.claude_code import looks_like_transcript, normalize
-from agent_history.blame import Line, apply_hunks, blame, story
-from agent_history.cli import main
-from agent_history.commands import summarize
-from agent_history.store import Store
+from whyl import model, sources
+from whyl.adapters import claude_code, codex
+from whyl.adapters.claude_code import looks_like_transcript, normalize
+from whyl.blame import Line, apply_hunks, blame, story
+from whyl.cli import main
+from whyl.commands import summarize
+from whyl.store import Store
 
 FIXTURES = Path(__file__).parent / "fixtures"
 SHOP_CAPTURE = FIXTURES / "codex" / "20261004T132159Z-39de3d"  # Codex fixed apply_discount and average

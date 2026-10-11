@@ -195,7 +195,7 @@ class AppServer:
         method = message["method"]
         if method not in APPROVALS:
             self.send({"id": message["id"], "error": {
-                "code": -32601, "message": f"{method} is not supported by the agent-history recorder"}})
+                "code": -32601, "message": f"{method} is not supported by the whyl recorder"}})
             return
         approve, deny = APPROVALS[method]
         if self.approvals == "ask":
@@ -357,7 +357,7 @@ def main() -> int:
     cwd = str(Path(args.cwd).resolve())
     name = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:6]
     capture = Capture(Path(args.captures).resolve() / name, {
-        "recorder": {"name": "agent-history-recorder", "version": RECORDER_VERSION},
+        "recorder": {"name": "whyl-recorder", "version": RECORDER_VERSION},
         "codex": {"bin": args.codex, "version": codex_version},
         "settings": {"cwd": cwd, "model": args.model, "sandbox": args.sandbox,
                      "approval_policy": args.approval_policy, "approvals": args.approvals},
@@ -371,7 +371,7 @@ def main() -> int:
     meta = capture.meta
     try:
         server.request("initialize", {
-            "clientInfo": {"name": "agent-history-recorder", "version": RECORDER_VERSION},
+            "clientInfo": {"name": "whyl-recorder", "version": RECORDER_VERSION},
             "capabilities": {"experimentalApi": True},
         }, args.rpc_timeout)
         server.send({"method": "initialized"})

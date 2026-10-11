@@ -1,0 +1,190 @@
+"""Where agent history comes from, and keeping the store in sync with it.
+
+Each `Source` knows how to find one kind of agent record on this machine and turn
+it into canonical events. `SOURCES` is the only place adapters are registered:
+supporting a new agent means writing its adapter and adding one entry here.
+
+When two sources hold the same agent run (they share thread ids), the one with
+the higher priority wins, so a richer recording is never replaced by a poorer one.
+"""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable, Iterable
+
+from whyl import model
+from whyl.adapters import claude_code, codex, codex_rollout, opencode
+from whyl.explain import Explainer
+from whyl.model import NormalizedSession
+from whyl.store import Store
+
+INGESTED, SKIPPED, FAILED = "ingested", "skipped", "failed"
+
+
+@dataclass(frozen=True)
+class Source:
+    name: str
+    priority: int  # higher wins when two sources hold the same session
+    discover: Callable[[], Iterable[Path]]  # records to sync automatically; may be empty
+    matches: Callable[[Path], bool]  # is this path one of ours? (for explicit `whyl ingest PATH`)
+    normalize: Callable[[Path], NormalizedSession]
+    # what tells a record has changed since the last sync; by default the file's mtime and size
+    stamp: Callable[[Path], "tuple[int, int] | None"] = lambda path: _file_stamp(path)
+
+
+@dataclass
+class Result:
+    path: Path
+    source: str
+    status: str  # INGESTED | SKIPPED | FAILED
+    session_id: str | None = None
+    reason: str | None = None
+
+
+def _file_stamp(path: Path) -> tuple[int, int] | None:
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return stat.st_mtime_ns, stat.st_size
+
+
+def _codex_logs() -> Iterable[Path]:
+    home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+    return sorted((home / "sessions").glob("**/rollout-*.jsonl"))
+
+
+def _claude_code_transcripts() -> Iterable[Path]:
+    home = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
+    return sorted((home / "projects").glob("*/*.jsonl"))  # sub-agent transcripts live deeper
+
+
+# opencode keeps all sessions in one database, so each session gets a virtual path under it
+# (`<database>/<session id>`), and its last update time stands in for the file's stat.
+_opencode_updated: dict[Path, int] = {}
+
+
+def _opencode_database() -> Path:
+    data = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")
+    return data / "opencode" / "opencode.db"
+
+
+def _opencode_sessions() -> Iterable[Path]:
+    database = _opencode_database()
+    if not database.is_file():
+        return []
+    found = {database / session_id: updated for session_id, updated in opencode.sessions(database)}
+    _opencode_updated.update(found)
+    return sorted(found)
+
+
+def _opencode_stamp(path: Path) -> tuple[int, int] | None:
+    if path not in _opencode_updated:
+        _opencode_updated.update({path.parent / s: u for s, u in opencode.sessions(path.parent)})
+    updated = _opencode_updated.get(path)
+    return (updated, 0) if updated is not None else None
+
+
+SOURCES: list[Source] = [
+    Source("codex-capture", 2, discover=lambda: [],
+           matches=lambda p: p.is_dir() and (p / "events.jsonl").is_file(), normalize=codex.normalize),
+    Source("codex-log", 1, discover=_codex_logs,
+           matches=lambda p: p.is_file() and p.name.startswith("rollout-") and p.suffix == ".jsonl",
+           normalize=codex_rollout.normalize),
+    Source("claude-code-log", 1, discover=_claude_code_transcripts,
+           matches=lambda p: p.is_file() and p.suffix == ".jsonl" and claude_code.looks_like_transcript(p),
+           normalize=claude_code.normalize),
+    Source("opencode-db", 1, discover=_opencode_sessions,
+           matches=lambda p: p.parent.name == "opencode.db" and p.parent.is_file(),
+           normalize=opencode.normalize, stamp=_opencode_stamp),
+]
+
+
+# Agent CLIs that can write explanations without being opened (see explain.py), in order of preference.
+EXPLAINERS: list[Explainer] = [claude_code.EXPLAINER, codex.EXPLAINER, opencode.EXPLAINER]
+
+
+def ingest(store: Store, path: Path, sources: list[Source] = SOURCES) -> Result:
+    """Ingest one explicitly named path with the first source that recognises it."""
+    source = next((s for s in sources if s.matches(path)), None)
+    if source is None:
+        raise LookupError(f"{path}: not a recognised agent record")
+    return _ingest(store, source, path, sources)
+
+
+def sync(store: Store, sources: list[Source] = SOURCES) -> list[Result]:
+    """Ingest every discoverable record that is new or changed since the last sync."""
+    results = _renormalize(store, sources) if store.model_version() != model.VERSION else []
+    for source in sources:
+        for path in source.discover():
+            stamp = source.stamp(path)
+            if stamp is None:
+                continue
+            key = str(path.resolve())
+            if store.file_unchanged(key, *stamp):
+                continue
+            results.append(_ingest(store, source, path, sources))
+            store.mark_synced(key, *stamp)  # failures too, until the file changes
+    return results
+
+
+def _renormalize(store: Store, sources: list[Source]) -> list[Result]:
+    """Adapters changed since these sessions were stored: rebuild every session from its source.
+
+    Sources found automatically are simply re-read by the sync that follows; the rest (such as
+    captures loaded by path) are re-ingested here from the path each session remembers.
+    """
+    store.forget_synced()
+    results = []
+    for row in store.sessions():
+        source = _source_of(row, sources)
+        path = Path(row["source"])
+        if source is not None and path.exists() and not _discoverable(source, path):
+            results.append(_ingest(store, source, path, sources))
+    store.set_model_version(model.VERSION)
+    return results
+
+
+def _discoverable(source: Source, path: Path) -> bool:
+    resolved = path.resolve()
+    return any(found.resolve() == resolved for found in source.discover())
+
+
+def _ingest(store: Store, source: Source, path: Path, sources: list[Source]) -> Result:
+    try:
+        normalized = source.normalize(path)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+        return Result(path, source.name, FAILED, reason=f"{type(error).__name__}: {error}")
+    if _inside(normalized.session.cwd, store.explain_dir):
+        return Result(path, source.name, SKIPPED, normalized.session.id, "whyl's own explanation run")
+    owner = store.owner_of_threads([t.id for t in normalized.threads])
+    if owner is not None:
+        holder = _source_of(owner, sources)
+        if holder is not None and holder.priority > source.priority:
+            return Result(path, source.name, SKIPPED, owner["id"], f"already recorded by {holder.name}")
+        if (holder is not None and holder.priority == source.priority and owner["id"] != normalized.session.id
+                and (owner["ended_at"] or 0) > (normalized.session.ended_at or 0)):
+            # Two records of the same run (e.g. a resumed conversation copies its history): keep the latest.
+            return Result(path, source.name, SKIPPED, owner["id"], f"a more recent record ({owner['id']}) is stored")
+    store.ingest(normalized, source.name)
+    return Result(path, source.name, INGESTED, normalized.session.id)
+
+
+def _inside(path: str | None, folder: Path) -> bool:
+    if not path:
+        return False
+    inner, outer = os.path.realpath(path), os.path.realpath(folder)
+    return inner == outer or inner.startswith(outer + os.sep)
+
+
+def _source_of(session_row, sources: list[Source]) -> Source | None:
+    """The source a stored session came from (inferred from its path for rows stored before
+    sessions recorded their source)."""
+    by_name = {s.name: s for s in sources}
+    if session_row["source_kind"] in by_name:
+        return by_name[session_row["source_kind"]]
+    path = Path(session_row["source"])
+    return next((s for s in sources if path.exists() and s.matches(path)), None)

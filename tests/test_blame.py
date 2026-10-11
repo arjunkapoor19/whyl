@@ -2,12 +2,12 @@ from pathlib import Path
 
 import pytest
 
-from agent_history import model
-from agent_history.adapters.codex import normalize
-from agent_history.blame import Line, apply_hunks, blame, reasons, replay, story, thinking
-from agent_history.model import Event, FileChange, NormalizedSession, Session, Thread, Turn
-from agent_history.present import highlights
-from agent_history.store import Store
+from whyl import model
+from whyl.adapters.codex import normalize
+from whyl.blame import Line, apply_hunks, blame, reasons, replay, story, thinking
+from whyl.model import Event, FileChange, NormalizedSession, Session, Thread, Turn
+from whyl.present import highlights
+from whyl.store import Store
 
 FIXTURES = Path(__file__).parent / "fixtures" / "codex"
 BREAK_FIX = FIXTURES / "20260929T172400Z-cb44c2"  # create calc.py, then break and fix it

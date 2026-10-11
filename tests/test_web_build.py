@@ -1,4 +1,4 @@
-"""The viewer's built page ships in the package (agent_history/static/), so users never need Node.
+"""The viewer's built page ships in the package (whyl/static/), so users never need Node.
 These tests catch a `web/` change that was never rebuilt, and a page that would reach the network."""
 
 import hashlib
@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_history import view
+from whyl import view
 
 WEB = Path(__file__).parent.parent / "web"
 

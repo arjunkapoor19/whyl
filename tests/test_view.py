@@ -1,4 +1,4 @@
-"""`ah view`: the JSON API over real sessions, and the local server's guarantees."""
+"""`whyl view`: the JSON API over real sessions, and the local server's guarantees."""
 
 import http.client
 import json
@@ -7,10 +7,10 @@ import threading
 
 import pytest
 
-from agent_history import view
-from agent_history.adapters import codex
-from agent_history.adapters.opencode import normalize as opencode_normalize
-from agent_history.store import Store
+from whyl import view
+from whyl.adapters import codex
+from whyl.adapters.opencode import normalize as opencode_normalize
+from whyl.store import Store
 from test_codex_rollout import SHOP_CAPTURE
 from test_opencode import CHILD, SESSION, SHOP_AFTER, delegating_session
 
@@ -84,7 +84,7 @@ def test_sub_agent_story_and_session(tmp_path):
 def server(tmp_path, store):
     static = tmp_path / "static"
     (static / "assets").mkdir(parents=True)
-    (static / "index.html").write_text("<!doctype html><title>ah</title>")
+    (static / "index.html").write_text("<!doctype html><title>whyl</title>")
     (static / "assets" / "app-1234.js").write_text("console.log(1)")
     server = view.Server(0, str(tmp_path / "h.db"), static)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -105,7 +105,7 @@ def get(server, path, host=None, method="GET", **headers):
 
 def test_server_serves_the_page_and_the_api(server):
     response, body = get(server, "/")
-    assert response.status == 200 and b"<title>ah</title>" in body
+    assert response.status == 200 and b"<title>whyl</title>" in body
     assert response.getheader("Cache-Control") == "no-cache"
     response, body = get(server, "/assets/app-1234.js")
     assert body == b"console.log(1)" and response.getheader("Content-Type").startswith("text/javascript")
@@ -126,7 +126,7 @@ def test_server_refuses_other_hosts_writes_and_escapes(server):
     assert get(server, "/api/sessions", host="evil.example")[0].status == 403  # DNS rebinding
     assert get(server, "/api/sessions", host=f"evil.example:{server.port}")[0].status == 403
     assert get(server, "/api/sessions", method="POST")[0].status == 403
-    assert get(server, "/api/explain", method="POST")[0].status == 403  # without the X-AH header
+    assert get(server, "/api/explain", method="POST")[0].status == 403  # without the X-Whyl header
     assert get(server, "/api/sessions", method="PUT")[0].status == 501
     assert get(server, "/../../etc/passwd")[0].status == 404
     assert get(server, "/%2e%2e/%2e%2e/etc/passwd")[0].status == 404

@@ -8,11 +8,11 @@ from pathlib import Path
 
 import pytest
 
-from agent_history import model, sources
-from agent_history.adapters.opencode import _file_changes, connect, normalize
-from agent_history.blame import Line, apply_hunks, blame
-from agent_history.cli import main
-from agent_history.store import Store
+from whyl import model, sources
+from whyl.adapters.opencode import _file_changes, connect, normalize
+from whyl.blame import Line, apply_hunks, blame
+from whyl.cli import main
+from whyl.store import Store
 
 SESSION = "ses_1111111111111111111111"
 SHOP = "def total(prices):\n    return sum(prices)\n"

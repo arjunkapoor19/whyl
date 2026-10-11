@@ -19,10 +19,10 @@ export function TopBar({ route, onSearch }: { route: Route; onSearch: () => void
   )
   return (
     <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-3 border-b border-edge bg-panel/80 px-4 backdrop-blur-md">
-      <a href="#/" className="flex items-center gap-2" aria-label="ah home">
+      <a href="#/" className="flex items-center gap-2" aria-label="whyl home">
         <Logo />
         <span className="text-[13.5px] font-semibold tracking-tight max-sm:hidden">
-          ah <span className="font-normal text-ink-3">agent history</span>
+          whyl <span className="font-normal text-ink-3">agent history</span>
         </span>
       </a>
       <nav className="ml-2 flex gap-0.5">

@@ -4,8 +4,8 @@ import subprocess
 
 import pytest
 
-from agent_history import setup as agent_setup
-from agent_history.cli import main
+from whyl import setup as agent_setup
+from whyl.cli import main
 
 THEIRS = {
     "model": "opus",
@@ -33,26 +33,26 @@ def commands(settings, event):
 
 def test_install_keeps_everything_else(homes):
     claude, _ = homes
-    agent_setup.install(agent_setup.AGENTS["claude-code"], "/usr/local/bin/ah")
+    agent_setup.install(agent_setup.AGENTS["claude-code"], "/usr/local/bin/whyl")
     settings = json.loads(claude.read_text())
     assert settings["model"] == "opus" and settings["permissions"] == THEIRS["permissions"]
-    assert commands(settings, "PreToolUse") == ["their-linter", "/usr/local/bin/ah hook claude-code pre # agent-history"]
-    assert commands(settings, "PostToolUse") == ["/usr/local/bin/ah hook claude-code post # agent-history"]
+    assert commands(settings, "PreToolUse") == ["their-linter", "/usr/local/bin/whyl hook claude-code pre # whyl"]
+    assert commands(settings, "PostToolUse") == ["/usr/local/bin/whyl hook claude-code post # whyl"]
     assert commands(settings, "Stop") == commands(settings, "UserPromptSubmit") == \
-        ["/usr/local/bin/ah hook claude-code stop # agent-history"]
+        ["/usr/local/bin/whyl hook claude-code stop # whyl"]
     assert commands(settings, "Notification") == ["say done"]
     ours = settings["hooks"]["PreToolUse"][1]
     assert ours["matcher"] == "Bash|Edit|MultiEdit|Write|NotebookEdit"
-    assert json.loads(claude.with_name("settings.json.agent-history.bak").read_text()) == THEIRS
+    assert json.loads(claude.with_name("settings.json.whyl.bak").read_text()) == THEIRS
 
 
 def test_install_is_idempotent_and_remove_restores(homes):
     claude, _ = homes
     agent = agent_setup.AGENTS["claude-code"]
-    agent_setup.install(agent, "/old/ah")
-    agent_setup.install(agent, "/new/ah")  # re-running replaces, never duplicates
+    agent_setup.install(agent, "/old/whyl")
+    agent_setup.install(agent, "/new/whyl")  # re-running replaces, never duplicates
     settings = json.loads(claude.read_text())
-    assert commands(settings, "PreToolUse") == ["their-linter", "/new/ah hook claude-code pre # agent-history"]
+    assert commands(settings, "PreToolUse") == ["their-linter", "/new/whyl hook claude-code pre # whyl"]
     assert agent_setup.remove(agent)
     assert json.loads(claude.read_text()) == THEIRS
     assert not agent_setup.remove(agent)
@@ -61,9 +61,9 @@ def test_install_is_idempotent_and_remove_restores(homes):
 def test_codex_hooks_file_is_created_and_removed(homes):
     _, codex = homes
     agent = agent_setup.AGENTS["codex"]
-    agent_setup.install(agent, "/bin/ah", db="/data/my history.db")
+    agent_setup.install(agent, "/bin/whyl", db="/data/my history.db")
     hooks = json.loads(codex.read_text())
-    assert commands(hooks, "PostToolUse") == ["/bin/ah --db '/data/my history.db' hook codex post # agent-history"]
+    assert commands(hooks, "PostToolUse") == ["/bin/whyl --db '/data/my history.db' hook codex post # whyl"]
     agent_setup.remove(agent)
     assert json.loads(codex.read_text()) == {}
 
@@ -82,11 +82,11 @@ def test_cli(homes, capsys):
 def test_opencode_plugin_is_written_and_removed():
     agent = agent_setup.AGENTS["opencode"]
     plugin = agent.settings()
-    assert plugin.parts[-3:] == ("opencode", "plugin", "agent-history.js")
-    agent_setup.install(agent, "/old/ah")
-    agent_setup.install(agent, "/bin/ah", db="/data/my history.db")  # re-running replaces
+    assert plugin.parts[-3:] == ("opencode", "plugin", "whyl.js")
+    agent_setup.install(agent, "/old/whyl")
+    agent_setup.install(agent, "/bin/whyl", db="/data/my history.db")  # re-running replaces
     text = plugin.read_text()
-    assert text.startswith("// agent-history") and 'const AH = ["/bin/ah", "--db", "/data/my history.db"]' in text
+    assert text.startswith("// whyl") and 'const WHYL = ["/bin/whyl", "--db", "/data/my history.db"]' in text
     assert agent_setup.remove(agent) and not plugin.exists()
     assert not agent_setup.remove(agent)
 
@@ -97,7 +97,7 @@ def test_opencode_plugin_never_replaces_someone_elses_file():
     plugin.parent.mkdir(parents=True)
     plugin.write_text("export const Mine = async () => ({})\n")
     with pytest.raises(ValueError):
-        agent_setup.install(agent, "/bin/ah")
+        agent_setup.install(agent, "/bin/whyl")
     assert not agent_setup.remove(agent)
     assert plugin.read_text() == "export const Mine = async () => ({})\n"
 
@@ -106,11 +106,11 @@ def test_opencode_plugin_never_replaces_someone_elses_file():
 def test_opencode_plugin_runs_ah_around_tool_calls(tmp_path):
     """Load the generated plugin and call its hooks the way opencode does."""
     calls = tmp_path / "calls.jsonl"
-    fake_ah = tmp_path / "ah"
-    fake_ah.write_text(f'#!/bin/sh\nprintf \'{{"args": "%s", "stdin": %s}}\\n\' "$*" "$(cat)" >> {calls}\n')
-    fake_ah.chmod(0o755)
+    fake_whyl = tmp_path / "whyl"
+    fake_whyl.write_text(f'#!/bin/sh\nprintf \'{{"args": "%s", "stdin": %s}}\\n\' "$*" "$(cat)" >> {calls}\n')
+    fake_whyl.chmod(0o755)
     agent = agent_setup.AGENTS["opencode"]
-    agent_setup.install(agent, str(fake_ah))
+    agent_setup.install(agent, str(fake_whyl))
     script = tmp_path / "run.mjs"
     script.write_text(f"""
         import {{ AgentHistory }} from {json.dumps(str(agent.settings()))}

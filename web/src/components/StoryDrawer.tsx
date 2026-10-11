@@ -55,14 +55,14 @@ function StoryBody({ story }: { story: Story }) {
     case "none":
       return (
         <Note icon="history" title="Not attributed">
-          This line predates what ah has recorded or observed, or changed while nothing was watching. Run{" "}
-          <code className="rounded bg-sunken px-1 font-mono">ah setup</code> so every change from now on is seen.
+          This line predates what whyl has recorded or observed, or changed while nothing was watching. Run{" "}
+          <code className="rounded bg-sunken px-1 font-mono">whyl setup</code> so every change from now on is seen.
         </Note>
       )
     case "baseline":
       return (
         <Note icon="history" title="Pre-existing">
-          Already here when ah started observing this workspace{story.author?.at ? <> ({exact(story.author.at)})</> : null}.
+          Already here when whyl started observing this workspace{story.author?.at ? <> ({exact(story.author.at)})</> : null}.
           No agent has changed it since.
         </Note>
       )
@@ -81,7 +81,7 @@ function StoryBody({ story }: { story: Story }) {
         <div className="space-y-3">
           <Header story={story} />
           <Note icon="clock" title="Transcript not synced yet">
-            ah saw {story.tool ?? "a tool call"} change this file; the session's transcript will appear once it syncs.
+            whyl saw {story.tool ?? "a tool call"} change this file; the session's transcript will appear once it syncs.
           </Note>
           {story.command && <pre className="rounded-lg bg-sunken px-3 py-2 font-mono text-[11.5px] whitespace-pre-wrap">{story.command}</pre>}
           {story.changes.map((c) => <Diff key={c.path} change={c} color={color} />)}
@@ -484,8 +484,8 @@ function Header({ story }: { story: Story }) {
       {(agentStory?.observed || author.concurrent) && (
         <div className="flex w-full gap-1.5">
           {agentStory?.observed && (
-            <span className="inline-flex items-center gap-1 rounded-md bg-sunken px-1.5 py-px text-[10.5px] text-ink-2" title="ah saw the file change around this tool call">
-              <Icon name="eye" size={11} /> observed by ah
+            <span className="inline-flex items-center gap-1 rounded-md bg-sunken px-1.5 py-px text-[10.5px] text-ink-2" title="whyl saw the file change around this tool call">
+              <Icon name="eye" size={11} /> observed by whyl
             </span>
           )}
           {author.concurrent && (

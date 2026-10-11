@@ -52,7 +52,7 @@ export function Home({ onSearch }: { onSearch: () => void }) {
           <div className="rounded-2xl border border-dashed border-edge-strong p-10 text-center">
             <h2 className="text-[15px] font-semibold">Nothing recorded yet</h2>
             <p className="mt-1 text-[12.5px] text-ink-2">
-              Run <code className="rounded bg-sunken px-1 font-mono">ah setup</code>, then use Claude Code, Codex or opencode as
+              Run <code className="rounded bg-sunken px-1 font-mono">whyl setup</code>, then use Claude Code, Codex or opencode as
               usual. Their work shows up here as it happens.
             </p>
           </div>

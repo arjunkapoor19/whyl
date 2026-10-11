@@ -2,10 +2,10 @@ from pathlib import Path
 
 import pytest
 
-from agent_history import model
-from agent_history.adapters.codex import normalize
-from agent_history.cli import main
-from agent_history.store import Store
+from whyl import model
+from whyl.adapters.codex import normalize
+from whyl.cli import main
+from whyl.store import Store
 
 FIXTURES = Path(__file__).parent / "fixtures" / "codex"
 BREAK_FIX = FIXTURES / "20260929T172400Z-cb44c2"

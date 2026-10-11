@@ -10,7 +10,7 @@ type Item =
   | { type: "file"; file: FileEntry; label: string; where: string }
   | { type: "session"; session: SessionSummary; label: string }
 
-/** ⌘K: jump to any file or session ah knows, by a few letters of its name. */
+/** ⌘K: jump to any file or session whyl knows, by a few letters of its name. */
 export function Palette({ onClose }: { onClose: () => void }) {
   const files = useApi<FileEntry[]>(api.files).data ?? []
   const sessions = useApi<SessionSummary[]>(api.sessions).data ?? []

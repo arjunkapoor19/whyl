@@ -1,5 +1,5 @@
 /** Build steps around Vite: a size budget, and the source hash that lets
- * the Python tests notice a `web/` change that was never rebuilt into `agent_history/static/`. */
+ * the Python tests notice a `web/` change that was never rebuilt into `whyl/static/`. */
 import { createHash } from "node:crypto"
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { join, relative, sep } from "node:path"
@@ -32,7 +32,7 @@ export function sourceHash(root: string): string {
 
 export function ahBuild(root: string): Plugin {
   return {
-    name: "ah-build",
+    name: "whyl-build",
     apply: "build",
     writeBundle(options, bundle) {
       const out = options.dir!

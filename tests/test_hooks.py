@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from agent_history import model
-from agent_history.hooks import PARSERS, handle, run
-from agent_history.store import Store
-from agent_history.workspace import Blobs
+from whyl import model
+from whyl.hooks import PARSERS, handle, run
+from whyl.store import Store
+from whyl.workspace import Blobs
 
 
 @pytest.fixture
@@ -139,7 +139,7 @@ def test_real_payloads_parse():
 
 def test_codex_hook_calls_link_to_codex_log_events(store):
     """Codex's hook `tool_use_id` is the item id in its session log; `session_id` is the thread id."""
-    from agent_history.adapters import codex_rollout
+    from whyl.adapters import codex_rollout
     log = next((Path(__file__).parent / "fixtures" / "codex_rollout").glob("rollout-2026-10-04*.jsonl"))
     store.ingest(codex_rollout.normalize(log))
     event = store.event(store.linked_event_id(REAL_CODEX["session_id"], REAL_CODEX["tool_use_id"]))
@@ -148,7 +148,7 @@ def test_codex_hook_calls_link_to_codex_log_events(store):
 
 def test_opencode_hook_calls_link_to_opencode_events(tmp_path, store):
     """The plugin sends opencode's `sessionID` and `callID`; the adapter keeps `callID` as the source id."""
-    from agent_history.adapters import opencode
+    from whyl.adapters import opencode
     from test_opencode import shop_session
     store.ingest(opencode.normalize(shop_session(tmp_path / "opencode.db")))
     call = PARSERS["opencode"]({"cwd": "/workspace", "session_id": "ses_1111111111111111111111",

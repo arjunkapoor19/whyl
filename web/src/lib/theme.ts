@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react"
 
 export type ThemeChoice = "system" | "light" | "dark"
-const KEY = "ah-theme"
+const KEY = "whyl-theme"
 const dark = () => matchMedia("(prefers-color-scheme: dark)")
 
 function stored(): ThemeChoice {

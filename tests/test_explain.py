@@ -1,4 +1,4 @@
-"""`ah explain`: turns explained by an agent CLI, once each, without ah's hooks or history noticing."""
+"""`whyl explain`: turns explained by an agent CLI, once each, without whyl's hooks or history noticing."""
 
 import http.client
 import json
@@ -9,20 +9,20 @@ import threading
 
 import pytest
 
-from agent_history import explain, hooks, sources, view
-from agent_history.adapters import claude_code, codex, opencode
-from agent_history.cli import main
-from agent_history.explain import Explainer
-from agent_history.store import Store
+from whyl import explain, hooks, sources, view
+from whyl.adapters import claude_code, codex, opencode
+from whyl.cli import main
+from whyl.explain import Explainer
+from whyl.store import Store
 from test_codex_rollout import SHOP_CAPTURE
 
 # Stands in for an agent CLI: answers every turn key in the prompt, and notes each call (where it ran,
-# whether ah's hooks were off) in calls.jsonl next to it.
+# whether whyl's hooks were off) in calls.jsonl next to it.
 FAKE = """
 import json, os, re, sys
 prompt = sys.stdin.read()
 with open(sys.argv[1], "a") as calls:
-    calls.write(json.dumps({"cwd": os.getcwd(), "pwd": os.environ.get("PWD"), "hooks": os.environ.get("AH_HOOKS"),
+    calls.write(json.dumps({"cwd": os.getcwd(), "pwd": os.environ.get("PWD"), "hooks": os.environ.get("WHYL_HOOKS"),
                             "keys": re.findall(r"=== (T\\d+) ===", prompt), "prompt": prompt}) + "\\n")
 if os.environ.get("FAKE_FAIL"):
     sys.exit("out of credits")
@@ -38,7 +38,7 @@ def fake(tmp_path, monkeypatch):
     fake = Explainer("fake", "codex", "tiny", stdin=True,
                      command=lambda prompt: [sys.executable, str(script), str(calls)])
     monkeypatch.setattr(sources, "EXPLAINERS", [fake])
-    monkeypatch.delenv("AH_EXPLAIN_WITH", raising=False)
+    monkeypatch.delenv("WHYL_EXPLAIN_WITH", raising=False)
     return fake
 
 
@@ -96,12 +96,12 @@ def test_pick_prefers_the_sessions_own_agent(monkeypatch):
     def make(name, agent, installed):
         return Explainer(name, agent, None, command=lambda p: [sys.executable if installed else "no-such-cli-xyz"])
     first, own, missing = make("a", "x", True), make("b", "codex", True), make("c", "y", False)
-    monkeypatch.delenv("AH_EXPLAIN_WITH", raising=False)
+    monkeypatch.delenv("WHYL_EXPLAIN_WITH", raising=False)
     assert explain.pick([first, own, missing], "codex") is own
     assert explain.pick([first, own, missing], "other") is first
     assert explain.pick([missing], "y") is None
     assert explain.pick([first, own], "codex", "a") is first
-    monkeypatch.setenv("AH_EXPLAIN_WITH", "a")
+    monkeypatch.setenv("WHYL_EXPLAIN_WITH", "a")
     assert explain.pick([first, own], "codex") is first
     with pytest.raises(explain.ExplainError):
         explain.pick([first], "codex", "zzz")
@@ -117,7 +117,7 @@ def test_answers_are_read_leniently():
 def test_cli_explain_and_blame_show_it(tmp_path, store, fake, capsys):
     db = str(store.explain_dir.parent / "h.db")
     assert main(["--db", db, "blame", "/workspace/shop.py:6"]) == 0
-    assert "For an AI-generated summary: ah explain /workspace/shop.py:6  (one call to your fake CLI" \
+    assert "For an AI-generated summary: whyl explain /workspace/shop.py:6  (one call to your fake CLI" \
         in capsys.readouterr().out
     assert main(["--db", db, "explain", "39de3d"]) == 0
     captured = capsys.readouterr()
@@ -159,9 +159,9 @@ def test_viewer_explains_on_request(tmp_path, store, fake):
                                headers={"Host": f"127.0.0.1:{server.port}", **headers})
             response = connection.getresponse()
             return response.status, response.read()
-        assert post({}, {"turns": [turn["id"]]})[0] == 403  # a page from another site can't send X-AH
-        assert post({"X-AH": "1"}, {"turns": "all"})[0] == 400
-        status, body = post({"X-AH": "1"}, {"turns": [turn["id"]]})
+        assert post({}, {"turns": [turn["id"]]})[0] == 403  # a page from another site can't send X-Whyl
+        assert post({"X-Whyl": "1"}, {"turns": "all"})[0] == 400
+        status, body = post({"X-Whyl": "1"}, {"turns": [turn["id"]]})
         assert status == 200 and json.loads(body)[turn["id"]]["text"] == "Explained T1."
     finally:
         server.shutdown()

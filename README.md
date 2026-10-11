@@ -1,11 +1,11 @@
-# agent-history
+# whyl
 
-An observability and history layer for AI coding agents. Git tells you what changed; Agent History tells you what the agent did that caused those changes.
+An observability and history layer for AI coding agents. Git tells you what changed; whyl tells you what the agent did that caused those changes.
 
-It reads the session history **Codex**, **Claude Code** and **opencode** already write, normalizes them into one agent-agnostic event model stored in SQLite, and answers "why does this line exist?" with `ah blame`, whichever agent wrote the line. Use your agents exactly as you normally do; there is nothing to set up. An optional recorder captures richer detail through the Codex App Server protocol.
+It reads the session history **Codex**, **Claude Code** and **opencode** already write, normalizes them into one agent-agnostic event model stored in SQLite, and answers "why does this line exist?" with `whyl blame`, whichever agent wrote the line. Use your agents exactly as you normally do; there is nothing to set up. An optional recorder captures richer detail through the Codex App Server protocol.
 
 ```text
-$ ah blame shop.py:6
+$ whyl blame shop.py:6
 shop.py:6
         return price * (1 - percent / 100)
 
@@ -55,14 +55,14 @@ THE REST OF THE SESSION  turn 1 of 2
 
 ```
 recorder/codex_recorder.py   records one Codex session (stdlib-only Python 3.9+)
-agent_history/               canonical model, SQLite store, blame, `ah` CLI
+whyl/               canonical model, SQLite store, blame, `whyl` CLI
   sources.py                 every source of agent history, and syncing them
   adapters/codex.py          Codex recorder capture -> canonical events
   adapters/codex_rollout.py  Codex's own session logs -> canonical events
   adapters/claude_code.py    Claude Code session transcripts -> canonical events
   adapters/opencode.py       opencode's session database -> canonical events
-  view.py                    `ah view`: a local server and JSON API for the viewer
-  explain.py                 `ah explain`: AI-generated turn summaries, by an agent CLI you have
+  view.py                    `whyl view`: a local server and JSON API for the viewer
+  explain.py                 `whyl explain`: AI-generated turn summaries, by an agent CLI you have
   static/                    the viewer's built page (generated from web/, committed)
 web/                         the viewer's source: Vite + React + Tailwind
 tests/                       pytest suite; fixtures/ holds sanitized real captures
@@ -77,58 +77,58 @@ captures/                    one directory per recorded session (gitignored; may
 Requires [uv](https://docs.astral.sh/uv/). There are no runtime dependencies beyond the Python standard library.
 
 ```sh
-uv tool install --editable .                  # puts `ah` on your PATH
-ah setup                                      # once: let ah observe Claude Code, Codex and opencode tool calls
+uv tool install --editable .                  # puts `whyl` on your PATH
+whyl setup                                      # once: let whyl observe Claude Code, Codex and opencode tool calls
 codex                                         # or `claude` or `opencode`: use your agent as usual, then:
-ah blame path/to/file.py:42                   # why does line 42 exist? (picks up new sessions automatically)
-ah view path/to/file.py:42                    # the same, in your browser
-ah explain path/to/file.py:42                 # an AI-generated summary of that turn, by your agent's CLI
+whyl blame path/to/file.py:42                   # why does line 42 exist? (picks up new sessions automatically)
+whyl view path/to/file.py:42                    # the same, in your browser
+whyl explain path/to/file.py:42                 # an AI-generated summary of that turn, by your agent's CLI
 ```
 
 ### Plain-language summaries
 
-`ah explain FILE:LINE` (or `ah explain SESSION` for all its turns) asks an agent CLI you already have to summarize a turn: what you wanted, what the agent changed and why, how it checked, and what's worth a second look. It runs the CLI headless (`claude -p` with haiku, `codex exec` at low reasoning effort, `opencode run`), with no tools, in its own empty folder, with ah's hooks off; nothing opens. A session is summarized by its own agent's CLI when installed, so your code goes to no provider that hadn't seen it; `--with claude|codex|opencode` or `$AH_EXPLAIN_WITH` picks another. Each turn is summarized once and kept (`--again` rewrites it), several turns share one call, and a turn still in progress waits until it has finished. Every summary is flagged as AI-generated and names the CLI and the model that wrote it: it is generated text, not the record. Nothing is summarized unless you ask: `ah blame` shows a turn's summary once it exists, and `ah view` has a **Summarize** button where the summary goes (and one button for all of a session's turns, in one call).
+`whyl explain FILE:LINE` (or `whyl explain SESSION` for all its turns) asks an agent CLI you already have to summarize a turn: what you wanted, what the agent changed and why, how it checked, and what's worth a second look. It runs the CLI headless (`claude -p` with haiku, `codex exec` at low reasoning effort, `opencode run`), with no tools, in its own empty folder, with whyl's hooks off; nothing opens. A session is summarized by its own agent's CLI when installed, so your code goes to no provider that hadn't seen it; `--with claude|codex|opencode` or `$WHYL_EXPLAIN_WITH` picks another. Each turn is summarized once and kept (`--again` rewrites it), several turns share one call, and a turn still in progress waits until it has finished. Every summary is flagged as AI-generated and names the CLI and the model that wrote it: it is generated text, not the record. Nothing is summarized unless you ask: `whyl blame` shows a turn's summary once it exists, and `whyl view` has a **Summarize** button where the summary goes (and one button for all of a session's turns, in one call).
 
 ### In the browser
 
-`ah view` opens the history as a page on your machine: each file with who wrote every block, and, for any line you click, the story behind it: what you asked (with the words that name the change highlighted), a summary of the turn, why the change was made as far as the record shows, the change and the test run that checked it, every step of the turn, the agent's conclusion, and the session's other turns. `j`/`k` move between lines, `⌘K` finds any file or session, `?` lists the shortcuts. The page follows your agents live: it re-syncs every few seconds, so lines change hands as an agent works.
+`whyl view` opens the history as a page on your machine: each file with who wrote every block, and, for any line you click, the story behind it: what you asked (with the words that name the change highlighted), a summary of the turn, why the change was made as far as the record shows, the change and the test run that checked it, every step of the turn, the agent's conclusion, and the session's other turns. `j`/`k` move between lines, `⌘K` finds any file or session, `?` lists the shortcuts. The page follows your agents live: it re-syncs every few seconds, so lines change hands as an agent works.
 
-The server listens on 127.0.0.1 only, answers only requests addressed to it by that name, and only reads, except to ask for summaries (a request other sites can't send). The page ships prebuilt inside the package: no Node needed to use it. `ah view --no-open --port N` just serves.
+The server listens on 127.0.0.1 only, answers only requests addressed to it by that name, and only reads, except to ask for summaries (a request other sites can't send). The page ships prebuilt inside the package: no Node needed to use it. `whyl view --no-open --port N` just serves.
 
 <!-- screenshot: docs/viewer.png -->
 
-`ah setup` adds small hooks to your user-level Claude Code and Codex settings (`~/.claude/settings.json`, `~/.codex/hooks.json`) and a small opencode plugin (`~/.config/opencode/plugin/agent-history.js`). Before and after every tool call that can change files, they snapshot the project, so `ah` sees exactly what each call changed, including edits made through the shell (`printf >> f`, `sed -i`, scripts), which agents don't report. Edits made between tool calls are labeled as made outside any agent (`you`). Each hook takes about 0.1 s. Your settings are backed up as `*.agent-history.bak`, and `ah setup --remove` takes the hooks out again. Codex asks you to trust new hooks once; restart opencode to load the plugin. Without `ah setup`, `ah` still works from agents' logs, but can't see shell edits.
+`whyl setup` adds small hooks to your user-level Claude Code and Codex settings (`~/.claude/settings.json`, `~/.codex/hooks.json`) and a small opencode plugin (`~/.config/opencode/plugin/whyl.js`). Before and after every tool call that can change files, they snapshot the project, so `whyl` sees exactly what each call changed, including edits made through the shell (`printf >> f`, `sed -i`, scripts), which agents don't report. Edits made between tool calls are labeled as made outside any agent (`you`). Each hook takes about 0.1 s. Your settings are backed up as `*.whyl.bak`, and `whyl setup --remove` takes the hooks out again. Codex asks you to trust new hooks once; restart opencode to load the plugin. Without `whyl setup`, `whyl` still works from agents' logs, but can't see shell edits.
 
-Snapshots keep copies of text files up to 1 MB under `~/.agent-history/objects`, next to the database. They never leave your machine.
+Snapshots keep copies of text files up to 1 MB under `~/.whyl/objects`, next to the database. They never leave your machine.
 
 ```sh
-uv run ah log                                 # list sessions
-uv run ah log <session>                       # one session's timeline (any unique part of the id)
-uv run ah blame path/to/file.py               # who wrote each line: which agent (or you), session, turn, when
-uv run ah blame path/to/file.py:42            # one line: the story of the turn that wrote it
-uv run ah ingest                              # sync agent logs explicitly and list what was loaded
-uv run ah ingest captures/<session-dir>       # load a recorder capture (wins over the log of the same session)
+uv run whyl log                                 # list sessions
+uv run whyl log <session>                       # one session's timeline (any unique part of the id)
+uv run whyl blame path/to/file.py               # who wrote each line: which agent (or you), session, turn, when
+uv run whyl blame path/to/file.py:42            # one line: the story of the turn that wrote it
+uv run whyl ingest                              # sync agent logs explicitly and list what was loaded
+uv run whyl ingest captures/<session-dir>       # load a recorder capture (wins over the log of the same session)
 uv run pytest                                 # tests
 ```
 
 Working on the viewer (`web/`) needs Node 20+:
 
 ```sh
-uv run ah view --no-open                      # the API, on 127.0.0.1:4545
-cd web && npm ci && npm run dev               # the page with hot reload, sending /api to ah view
+uv run whyl view --no-open                      # the API, on 127.0.0.1:4545
+cd web && npm ci && npm run dev               # the page with hot reload, sending /api to whyl view
 npm test                                      # frontend unit tests
-npm run build                                 # rebuild agent_history/static/ (commit the result)
+npm run build                                 # rebuild whyl/static/ (commit the result)
 ```
 
 The build fails if the first paint needs more than 120 KB of JavaScript (gzipped), and the Python tests fail if `web/` changed without a rebuild.
 
-`ah log` and `ah blame` first sync your agents' session logs (Codex: `$CODEX_HOME/sessions`, default `~/.codex/sessions`; Claude Code: `$CLAUDE_CONFIG_DIR/projects`, default `~/.claude/projects`; opencode: `~/.local/share/opencode/opencode.db`, read-only), reading only new or changed sessions. History survives your agent's own cleanup: Claude Code, for example, deletes transcripts after about 30 days, but synced sessions stay in `ah`. The database defaults to `~/.agent-history/history.db`. Override it with `--db` or `$AGENT_HISTORY_DB`. Each agent run is stored once, even if it was both logged and captured.
+`whyl log` and `whyl blame` first sync your agents' session logs (Codex: `$CODEX_HOME/sessions`, default `~/.codex/sessions`; Claude Code: `$CLAUDE_CONFIG_DIR/projects`, default `~/.claude/projects`; opencode: `~/.local/share/opencode/opencode.db`, read-only), reading only new or changed sessions. History survives your agent's own cleanup: Claude Code, for example, deletes transcripts after about 30 days, but synced sessions stay in `whyl`. The database defaults to `~/.whyl/history.db`. Override it with `--db` or `$WHYL_DB`. Each agent run is stored once, even if it was both logged and captured.
 
 Blame aligns everything with the file on disk, so a line nothing recorded or observed is reported as untracked, never misattributed. See `docs/event-model.md` for how it all fits together.
 
 ## Recording a session (optional)
 
-Codex's own logs are enough for `ah blame`. The recorder adds approvals, commands still running when a turn was interrupted, and the full streaming protocol.
+Codex's own logs are enough for `whyl blame`. The recorder adds approvals, commands still running when a turn was interrupted, and the full streaming protocol.
 
 ```sh
 python3 recorder/codex_recorder.py --cwd /path/to/project 'first prompt' 'follow-up prompt'

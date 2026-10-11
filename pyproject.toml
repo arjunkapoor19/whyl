@@ -1,5 +1,5 @@
 [project]
-name = "agent-history"
+name = "whyl"
 version = "0.1.0"
 description = "Git-like history and observability for AI coding agents"
 readme = "README.md"
@@ -7,7 +7,7 @@ requires-python = ">=3.9"
 dependencies = []
 
 [project.scripts]
-ah = "agent_history.cli:main"
+whyl = "whyl.cli:main"
 
 [dependency-groups]
 dev = ["pytest>=8"]

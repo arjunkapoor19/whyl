@@ -3,12 +3,12 @@ import react from "@vitejs/plugin-react"
 import { defineConfig } from "vitest/config"
 import { ahBuild } from "./build"
 
-// `npm run dev` serves the page with hot reload and sends /api to `ah view --no-open`.
+// `npm run dev` serves the page with hot reload and sends /api to `whyl view --no-open`.
 export default defineConfig({
   plugins: [react(), tailwindcss(), ahBuild(__dirname)],
   base: "/",
   build: {
-    outDir: "../agent_history/static",
+    outDir: "../whyl/static",
     emptyOutDir: true,
     target: "es2022",
     reportCompressedSize: false,

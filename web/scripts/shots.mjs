@@ -1,7 +1,7 @@
 // Screenshots of the viewer for reviewing its look: desktop, phone, light and dark.
-//   ah view --no-open --port 4646 &      (any database with some history)
+//   whyl view --no-open --port 4646 &      (any database with some history)
 //   npm run shots -- http://127.0.0.1:4646 /path/to/a/file.py 58
-// Uses an installed Chromium browser (AH_BROWSER, or Chrome/Brave/Edge in the usual places).
+// Uses an installed Chromium browser (WHYL_BROWSER, or Chrome/Brave/Edge in the usual places).
 import { existsSync, mkdirSync } from "node:fs"
 import { chromium } from "playwright-core"
 
@@ -10,7 +10,7 @@ const out = new URL("../screenshots/", import.meta.url).pathname
 mkdirSync(out, { recursive: true })
 
 const browsers = [
-  process.env.AH_BROWSER,
+  process.env.WHYL_BROWSER,
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
   "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
   "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
@@ -18,7 +18,7 @@ const browsers = [
   "/usr/bin/chromium",
 ].filter(Boolean)
 const executablePath = browsers.find((p) => existsSync(p))
-if (!executablePath) throw new Error("no Chromium browser found: set AH_BROWSER")
+if (!executablePath) throw new Error("no Chromium browser found: set WHYL_BROWSER")
 
 const browser = await chromium.launch({ executablePath })
 const fileHash = file ? `#/file/${encodeURIComponent(file)}` : null

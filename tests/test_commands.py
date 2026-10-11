@@ -1,6 +1,6 @@
 import pytest
 
-from agent_history.commands import is_test, read_only_label, summarize, verdict
+from whyl.commands import is_test, read_only_label, summarize, verdict
 
 UNITTEST_FAIL = """\
 ---------------------------------------------------------

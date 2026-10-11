@@ -2,8 +2,8 @@ import json
 from collections import Counter
 from pathlib import Path
 
-from agent_history import model
-from agent_history.adapters.codex import _unwrap_shell, normalize
+from whyl import model
+from whyl.adapters.codex import _unwrap_shell, normalize
 
 FIXTURES = Path(__file__).parent / "fixtures" / "codex"
 BREAK_FIX = FIXTURES / "20260929T172400Z-cb44c2"  # 2 turns: create calc.py, then break and fix it

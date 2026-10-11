@@ -7,11 +7,11 @@ from datetime import datetime
 
 import pytest
 
-from agent_history.adapters import claude_code
-from agent_history.blame import blame, story
-from agent_history.cli import main
-from agent_history.hooks import handle
-from agent_history.store import Store
+from whyl.adapters import claude_code
+from whyl.blame import blame, story
+from whyl.cli import main
+from whyl.hooks import handle
+from whyl.store import Store
 
 SESSION = "33333333-3333-4333-8333-333333333333"
 APPEND = "printf '\\n\\ndef divide(a, b):\\n    return a / b\\n' >> shop.py"
@@ -89,7 +89,7 @@ def test_a_shell_edit_is_attributed_to_its_command(tmp_path, repo, store, capsys
     db = str(tmp_path / "db" / "h.db")
     assert main(["--db", db, "blame", f"{repo}/shop.py:5"]) == 0
     out = capsys.readouterr().out
-    assert "written by claude-code" in out and "observed by ah" in out
+    assert "written by claude-code" in out and "observed by whyl" in out
     assert "▶ 10:01:00  command  printf" in out and "(shop.py +4 −0)" in out
     assert "  │ +def divide(a, b):   ← this line\n" in out
 

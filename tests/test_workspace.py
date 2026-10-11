@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from agent_history import model
-from agent_history.store import Store
-from agent_history.workspace import MAX_BLOB, RACY_NS, Blobs, list_files, root_of, snapshot, unified_diff
+from whyl import model
+from whyl.store import Store
+from whyl.workspace import MAX_BLOB, RACY_NS, Blobs, list_files, root_of, snapshot, unified_diff
 
 
 @pytest.fixture
@@ -121,7 +121,7 @@ def test_root_of_a_repo_subdirectory(tmp_path):
 
 
 def test_unified_diff_replays():
-    from agent_history.blame import Line, apply_hunks
+    from whyl.blame import Line, apply_hunks
     before, after = "a\nb\nc\nd\n", "a\nB\nc\nd\ne\n"
     lines = [Line(t) for t in before.splitlines()]
     apply_hunks(lines, unified_diff(before, after), "e1")

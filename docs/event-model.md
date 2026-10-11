@@ -1,6 +1,6 @@
 # Canonical event model
 
-Adapters translate an agent's native records into one agent-agnostic model (`agent_history/model.py`). Everything above the adapters (store, blame, and later diff and replay) sees only this model. If a field only makes sense for one agent, it goes in an event's `payload`, never in the model.
+Adapters translate an agent's native records into one agent-agnostic model (`whyl/model.py`). Everything above the adapters (store, blame, and later diff and replay) sees only this model. If a field only makes sense for one agent, it goes in an event's `payload`, never in the model.
 
 The raw capture stays the source of truth. Every event keeps `source_lines`, the 1-based lines in the raw source it came from, so any canonical event can be traced back to the exact bytes the agent emitted.
 
@@ -39,20 +39,20 @@ Commands carry `payload.actions`, each typed `read`, `list`, `search` or `other`
 
 ## Sources
 
-`agent_history/sources.py` registers every source of history, and is the only place adapters are named. A `Source` has a name, a priority, a way to discover its records on this machine, a test for whether a path is one of its records, and the adapter that normalizes it. Supporting a new agent means writing its adapter and adding one `Source`.
+`whyl/sources.py` registers every source of history, and is the only place adapters are named. A `Source` has a name, a priority, a way to discover its records on this machine, a test for whether a path is one of its records, and the adapter that normalizes it. Supporting a new agent means writing its adapter and adding one `Source`.
 
 | source | priority | discovered automatically | adapter |
 |---|---|---|---|
-| `codex-capture` | 2 | no (`ah ingest <capture dir>`) | `adapters/codex.py` |
+| `codex-capture` | 2 | no (`whyl ingest <capture dir>`) | `adapters/codex.py` |
 | `codex-log` | 1 | `$CODEX_HOME/sessions/**/rollout-*.jsonl` (default `~/.codex`) | `adapters/codex_rollout.py` |
 | `claude-code-log` | 1 | `$CLAUDE_CONFIG_DIR/projects/*/*.jsonl` (default `~/.claude`) | `adapters/claude_code.py` |
 | `opencode-db` | 1 | every top-level session in `$XDG_DATA_HOME/opencode/opencode.db` (default `~/.local/share`), as `<database>/<session id>` | `adapters/opencode.py` |
 
-`ah log` and `ah blame` sync every source first, re-reading only files whose size or modification time changed. When adapters change what they produce, `model.VERSION` is bumped. The next sync then rebuilds every stored session from the source path it remembers, so old sessions never keep stale normalized data. When two sources hold the same agent run (they share thread ids), the higher priority wins: a lower-priority record is skipped, and a higher-priority one replaces what's stored. At equal priority, the record with the most recent activity wins (a resumed Claude Code conversation copies its history into a new transcript; the newer, longer copy is kept). A session is never stored twice.
+`whyl log` and `whyl blame` sync every source first, re-reading only files whose size or modification time changed. When adapters change what they produce, `model.VERSION` is bumped. The next sync then rebuilds every stored session from the source path it remembers, so old sessions never keep stale normalized data. When two sources hold the same agent run (they share thread ids), the higher priority wins: a lower-priority record is skipped, and a higher-priority one replaces what's stored. At equal priority, the record with the most recent activity wins (a resumed Claude Code conversation copies its history into a new transcript; the newer, longer copy is kept). A session is never stored twice.
 
 ## Codex App Server mapping
 
-Source: Codex App Server JSON-RPC (see `protocol-notes.md`), adapter `agent_history/adapters/codex.py`.
+Source: Codex App Server JSON-RPC (see `protocol-notes.md`), adapter `whyl/adapters/codex.py`.
 
 | Codex | canonical |
 |---|---|
@@ -79,7 +79,7 @@ Source: Codex App Server JSON-RPC (see `protocol-notes.md`), adapter `agent_hist
 
 ## Codex session log mapping
 
-Source: the log Codex writes for every session, however it was started, at `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`. Adapter: `agent_history/adapters/codex_rollout.py`. Log items mirror App Server items, so the adapter converts each one to the App Server shape and reuses that mapping.
+Source: the log Codex writes for every session, however it was started, at `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`. Adapter: `whyl/adapters/codex_rollout.py`. Log items mirror App Server items, so the adapter converts each one to the App Server shape and reuses that mapping.
 
 | Codex log record | canonical |
 |---|---|
@@ -95,7 +95,7 @@ Compared with a capture, a log has no approvals and no streaming. That's why cap
 
 ## Claude Code transcript mapping
 
-Source: the transcript Claude Code writes while it works, `~/.claude/projects/<cwd with / → ->/<session-id>.jsonl`. Adapter: `agent_history/adapters/claude_code.py`.
+Source: the transcript Claude Code writes while it works, `~/.claude/projects/<cwd with / → ->/<session-id>.jsonl`. Adapter: `whyl/adapters/claude_code.py`.
 
 | Claude Code record | canonical |
 |---|---|
@@ -117,7 +117,7 @@ Source: the transcript Claude Code writes while it works, `~/.claude/projects/<c
 
 **Ignored:** `isMeta` records (slash-command output), compaction summaries, slash commands themselves (`<command-name>…`), and bookkeeping: `attachment`, `mode`, `permission-mode`, `ai-title`, `last-prompt`, `agent-name`, `atis-latch`, `cost-state`, `queue-operation`, `system`, `file-history-*`.
 
-Claude Code deletes transcripts after about 30 days by default. Sessions already synced stay in `ah`'s database.
+Claude Code deletes transcripts after about 30 days by default. Sessions already synced stay in `whyl`'s database.
 
 Not yet read: sub-agent transcripts under `<session-id>/subagents/`.
 
@@ -143,11 +143,11 @@ opencode keeps every session in one SQLite database, opened read-only. A source 
 
 **Ignored:** `step-start`, `patch` (snapshot hashes), `snapshot`, `file`, `agent`, `compaction` parts.
 
-Normalizing any session of a tree (`ah ingest <db>/<child id>`) normalizes the whole tree from its top-level session.
+Normalizing any session of a tree (`whyl ingest <db>/<child id>`) normalizes the whole tree from its top-level session.
 
 ## Observed changes
 
-Agents only report changes they make with their edit tools, so a shell command's side effects (`printf >> f`, `sed -i`, a script that writes files) are invisible in their logs. `ah setup` therefore installs hooks (`agent_history/setup.py`) that run `ah hook <agent> pre|post|stop` (`agent_history/hooks.py`) around each tool call that can change files. Each run snapshots the workspace (`agent_history/workspace.py`) and records the difference as an **observation**:
+Agents only report changes they make with their edit tools, so a shell command's side effects (`printf >> f`, `sed -i`, a script that writes files) are invisible in their logs. `whyl setup` therefore installs hooks (`whyl/setup.py`) that run `whyl hook <agent> pre|post|stop` (`whyl/hooks.py`) around each tool call that can change files. Each run snapshots the workspace (`whyl/workspace.py`) and records the difference as an **observation**:
 
 - **Snapshots work like git's index.** The workspace is the git top level of the hook's `cwd` (or the directory itself); its files are git's view (tracked and untracked, minus ignored). Every file is `stat`ed, and only files whose size or modification time changed (or that changed within 2 s of the last snapshot) are read. Contents go into a content-addressed store, `objects/` next to the database: text files up to 1 MB. Binary and larger files are tracked by hash only.
 - **The first snapshot of a workspace is a `baseline`:** what it held before anything was observed.
@@ -157,7 +157,7 @@ Agents only report changes they make with their edit tools, so a shell command's
 - **Overlapping observations in one workspace** (parallel tool calls, two agents at once) are marked `concurrent`.
 - **Hooks never disturb the agent.** They're serialized with a file lock, always exit 0, never write to stdout, and log failures to `hooks.log` next to the database.
 
-Hook input is the same for every agent (`session_id`, `tool_use_id`, `tool_name`, `tool_input`, `cwd`, …; Codex adds `turn_id`); parsers live in `hooks.PARSERS`. opencode has no hook settings: its hooks are JS plugins, so `ah setup` writes one, `$XDG_CONFIG_HOME/opencode/plugin/agent-history.js` (default `~/.config`), tagged on its first line. It runs `ah hook opencode pre|post` from `tool.execute.before`/`after` (every tool) and `stop` on `session.idle` and `chat.message`, sending the same fields: `session_id` = opencode's `sessionID`, `tool_use_id` = its `callID`, `cwd` = the plugin's `directory`. Verified with real hook calls:
+Hook input is the same for every agent (`session_id`, `tool_use_id`, `tool_name`, `tool_input`, `cwd`, …; Codex adds `turn_id`); parsers live in `hooks.PARSERS`. opencode has no hook settings: its hooks are JS plugins, so `whyl setup` writes one, `$XDG_CONFIG_HOME/opencode/plugin/whyl.js` (default `~/.config`), tagged on its first line. It runs `whyl hook opencode pre|post` from `tool.execute.before`/`after` (every tool) and `stop` on `session.idle` and `chat.message`, sending the same fields: `session_id` = opencode's `sessionID`, `tool_use_id` = its `callID`, `cwd` = the plugin's `directory`. Verified with real hook calls:
 - **Claude Code:** `tool_use_id` is the transcript's `tool_use.id` (`toolu_…`), and `session_id` is its `sessionId`.
 - **Codex:** `tool_use_id` is the item id in its session log (`exec-…`), and `session_id` is the thread id.
 - **Shell tool name:** both agents call it `Bash`.
@@ -166,7 +166,7 @@ An `agent` observation links to the event whose `payload.source_id` equals the h
 
 ## Blame
 
-`ah blame` replays every non-declined `FileChange` in time order into a per-file line-origin map. `add` attributes every line. `update` hunks are applied by their line numbers, so the file's original content is not needed, and lines no recorded change touched stay unattributed. A replaced line keeps the history of the line it replaced, so `ah blame file:N` can show a line being written, broken and fixed.
+`whyl blame` replays every non-declined `FileChange` in time order into a per-file line-origin map. `add` attributes every line. `update` hunks are applied by their line numbers, so the file's original content is not needed, and lines no recorded change touched stay unattributed. A replaced line keeps the history of the line it replaced, so `whyl blame file:N` can show a line being written, broken and fixed.
 
 Each line also remembers its line number right after the edit that wrote it, so a story marks exactly that line in the edit's diff (not just the first line with the same text). For a large edit, such as creating a file, the diff is shown as a window around the line.
 
@@ -174,7 +174,7 @@ Observed changes join the same timeline:
 
 - **Aligning instead of patching.** For an observed change, the replay is aligned (`difflib`) to the file's actual content after the change. Lines that stayed keep their author; new or changed lines belong to that observation, and carry the history of the lines they replaced. Because the content is ground truth, the replay corrects itself.
 - **No double counting.** An observed tool call replaces the same call's recorded changes for that file.
-- **Sub-agents.** A line written in a child thread is credited to its session, with the turn the person asked in (found through the `subagent_call` whose `receiver_thread_ids` names the thread), and the story shows each hand-off: `turn 1 › sub-agent 22222222`, the person's prompt, then the prompt each sub-agent was given. `ah log` labels a sub-agent's turns `sub-agent <id>, from turn N`.
+- **Sub-agents.** A line written in a child thread is credited to its session, with the turn the person asked in (found through the `subagent_call` whose `receiver_thread_ids` names the thread), and the story shows each hand-off: `turn 1 › sub-agent 22222222`, the person's prompt, then the prompt each sub-agent was given. `whyl log` labels a sub-agent's turns `sub-agent <id>, from turn N`.
 - **Pre-observation history survives.** At the baseline, the replay is aligned to the baseline content: lines agents wrote before observation began keep their author, and the rest become known pre-existing lines.
 - **Every line gets an author:**
   - the agent, linked to its event when its transcript is synced
@@ -187,7 +187,7 @@ When the file exists on disk, the result is aligned with its current content. A 
 
 ### The story behind a line
 
-`ah blame file:N` (and the viewer) tell the turn that wrote the line, from intent to outcome (`blame.story`):
+`whyl blame file:N` (and the viewer) tell the turn that wrote the line, from intent to outcome (`blame.story`):
 
 - **You asked:** the prompt (for a sub-agent's line, the person's prompt and each hand-off). Words that name what the change touched are highlighted (`present.highlights`: identifiers in the change, close forms like "array" for `multiply_arrays`, and the file name).
 - **Why this change** (`blame.reasons`), what the record shows just before the change: the agent's own note on the step (Claude Code's command `description`), then, since the same file last changed, its last thought (reasoning summary or content), the last thing it said, and the last test run if it failed. Order is not proof of cause, and the output says so.
@@ -199,11 +199,11 @@ When the file exists on disk, the result is aligned with its current content. A 
 
 ### Summaries
 
-`ah explain` runs an installed agent CLI headless on a digest of a turn (`explain.digest`: the prompt; each step on a line, with up to 20 diff lines per edit and sub-agents' steps in place; the final answer; at most 6,000 characters) and stores the answer in `explanations`, keyed by turn id, with a key of the turn's status, event count and last time. A turn is summarized once; a turn that has grown since is summarized again once it has settled (finished, or quiet for 10 minutes). Failures are stored too and only retried on request. Up to 30,000 characters of digests go in one call; the answer is a JSON object by turn. How each CLI is run is the adapter's (`EXPLAINER`), registered in `sources.EXPLAINERS`. The CLI runs in `explain/` next to the database with `AH_HOOKS=off` (and `PWD` set to it); sessions recorded there are never synced. Each explanation's `by` names the CLI and the model that actually answered, as the adapter reads it (`Explainer.answer`), and every summary is shown flagged as AI-generated with it. Nothing asks for a summary on its own: `ah explain` in the terminal, a button in the viewer.
+`whyl explain` runs an installed agent CLI headless on a digest of a turn (`explain.digest`: the prompt; each step on a line, with up to 20 diff lines per edit and sub-agents' steps in place; the final answer; at most 6,000 characters) and stores the answer in `explanations`, keyed by turn id, with a key of the turn's status, event count and last time. A turn is summarized once; a turn that has grown since is summarized again once it has settled (finished, or quiet for 10 minutes). Failures are stored too and only retried on request. Up to 30,000 characters of digests go in one call; the answer is a JSON object by turn. How each CLI is run is the adapter's (`EXPLAINER`), registered in `sources.EXPLAINERS`. The CLI runs in `explain/` next to the database with `WHYL_HOOKS=off` (and `PWD` set to it); sessions recorded there are never synced. Each explanation's `by` names the CLI and the model that actually answered, as the adapter reads it (`Explainer.answer`), and every summary is shown flagged as AI-generated with it. Nothing asks for a summary on its own: `whyl explain` in the terminal, a button in the viewer.
 
 ### Evidence from commands
 
-`agent_history/commands.py` reads the canonical command payload, so it works for any agent:
+`whyl/commands.py` reads the canonical command payload, so it works for any agent:
 
 - **Test runners** are recognised at the start of a command segment (`pytest`, `python -m unittest`, `npm test`, `go test`, `cargo test`, …, also behind `cd x &&`, `uv run`, `npx`). `rg pytest` is not a test run.
 - **Summaries** come from the end of the output, because agents may truncate the start: unittest/pytest/jest counts, the last assertion or exception line, `command not found` for exit 127, or the last output line as a fallback.
@@ -213,15 +213,15 @@ When the file exists on disk, the result is aligned with its current content. A 
 
 ## The viewer's API
 
-`ah view` serves a JSON API on 127.0.0.1 (`agent_history/view.py`). Every answer is built from the same functions `ah blame` and `ah log` print from, and steps are classified once (`present.outline`) for both, so the terminal and the page always agree.
+`whyl view` serves a JSON API on 127.0.0.1 (`whyl/view.py`). Every answer is built from the same functions `whyl blame` and `whyl log` print from, and steps are classified once (`present.outline`) for both, so the terminal and the page always agree.
 
 | Route | Answer |
 |---|---|
 | `/api/status` | whether the first sync is still running, what the last one found, and `version`, which changes with every write to the database (the page refetches when it does) |
-| `/api/files` | every file agents changed or ah saw change: path, workspace, number of changes, agents, last change |
+| `/api/files` | every file agents changed or whyl saw change: path, workspace, number of changes, agents, last change |
 | `/api/blame?path=` | the file's lines, each pointing at one entry of `authors` (agent, session, the turn you asked in, when), plus totals per author |
 | `/api/story?path=&line=` | the line's story, by kind: `agent` (prompt and `highlights`, sub-agent hand-offs, `reasons`, the turn's `steps` with diffs and the written line `marked`, the `check` and `final` steps, `work`, the turn's `explanation` and which `explainer` would write one, `earlier`/`later` turns, line history), `outside`, `baseline`, `unsynced` or `none` |
 | `/api/sessions`, `/api/sessions/<id>` | sessions newest first; one session's turns with their steps and `explanation`, a sub-agent's turns naming the turn that delegated them (`delegated_from`) and each edit the line it starts at |
-| `POST /api/explain` `{"turns": [...], "again": false}` | summarizes the turns that need it and returns each one's explanation. Only with the header `X-AH: 1`, which pages from other sites can't send without a CORS preflight the server never answers |
+| `POST /api/explain` `{"turns": [...], "again": false}` | summarizes the turns that need it and returns each one's explanation. Only with the header `X-Whyl: 1`, which pages from other sites can't send without a CORS preflight the server never answers |
 
 Requests whose `Host` isn't `127.0.0.1:<port>` or `localhost:<port>` are refused, which stops other sites reaching the API through DNS rebinding.

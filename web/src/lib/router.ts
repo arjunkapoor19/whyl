@@ -1,4 +1,4 @@
-/** Hash routes, so `ah view` can open the page at any file and line, and links can be shared. */
+/** Hash routes, so `whyl view` can open the page at any file and line, and links can be shared. */
 import { useSyncExternalStore } from "react"
 import { flushSync } from "react-dom"
 

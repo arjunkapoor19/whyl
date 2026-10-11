@@ -36,7 +36,7 @@ describe("router", () => {
     expect(parse("#/file/%2Fw%2Fa.py")).toEqual({ name: "file", path: "/w/a.py", line: null })
   })
   test("the server's links open where they should", () => {
-    // agent_history/view.py builds these with quote(path, safe='')
+    // whyl/view.py builds these with quote(path, safe='')
     expect(parse("#/file/%2Fw%2Fshop.py?line=7")).toEqual({ name: "file", path: "/w/shop.py", line: 7 })
   })
   test("other routes", () => {
@@ -67,7 +67,7 @@ describe("fuzzy", () => {
     expect(score("zz", "shop.py")).toBe(-Infinity)
     expect(rank("shop", ["workshop/x.py", "src/shop.py", "other.py"], (s) => s)).toEqual(["src/shop.py", "workshop/x.py"])
     // letters scattered across a long path are noise next to a real match
-    expect(rank("shop", ["ah-demo/shop.py", "agent-history/agent_history/hooks.py"], (s) => s)).toEqual(["ah-demo/shop.py"])
+    expect(rank("shop", ["ah-demo/shop.py", "whyl/whyl/hooks.py"], (s) => s)).toEqual(["ah-demo/shop.py"])
   })
 })
 

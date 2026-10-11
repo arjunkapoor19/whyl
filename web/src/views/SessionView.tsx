@@ -9,7 +9,7 @@ import { href } from "../lib/router"
 import { clock, duration, exact } from "../lib/time"
 import { Empty } from "./FileView"
 
-/** One session as `ah log` tells it: turns as cards, sub-agent turns nested under the turn that
+/** One session as `whyl log` tells it: turns as cards, sub-agent turns nested under the turn that
  * delegated them, and every edit a link to the file at the line it wrote. */
 export function SessionView({ id }: { id: string }) {
   const { data, error } = useApi<Session>(api.session(id))

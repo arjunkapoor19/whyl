@@ -1,11 +1,11 @@
 import json
 from pathlib import Path
 
-from agent_history import model
-from agent_history.adapters import codex, codex_rollout
-from agent_history.blame import blame, story
-from agent_history.commands import is_test, summarize
-from agent_history.store import Store
+from whyl import model
+from whyl.adapters import codex, codex_rollout
+from whyl.blame import blame, story
+from whyl.commands import is_test, summarize
+from whyl.store import Store
 
 FIXTURES = Path(__file__).parent / "fixtures"
 # The shop.py session, recorded twice: by our recorder and by Codex's own session log.

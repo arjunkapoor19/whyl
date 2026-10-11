@@ -1,4 +1,4 @@
-/** The JSON API `ah view` serves (agent_history/view.py), and hooks to read it live. */
+/** The JSON API `whyl view` serves (whyl/view.py), and hooks to read it live. */
 import { useEffect, useState, useSyncExternalStore } from "react"
 
 export type Author = {
@@ -258,7 +258,7 @@ export function explain(turns: string[], again = false): Promise<Record<string, 
   if (!request) {
     request = fetch("/api/explain", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-AH": "1" },
+      headers: { "Content-Type": "application/json", "X-Whyl": "1" },
       body: JSON.stringify({ turns, again }),
     }).then(async (response) => {
       const body = await response.json().catch(() => ({}))
