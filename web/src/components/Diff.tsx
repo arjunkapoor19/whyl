@@ -89,7 +89,11 @@ export function Diff({ change, color, open = false, showPath = true }: Props) {
                   {marked && (
                     <span
                       className="sticky right-0 ml-auto flex items-center gap-1 pr-2 pl-3 font-sans text-[10.5px] font-semibold whitespace-nowrap"
-                      style={{ color: color ?? "var(--focus)" }}
+                      style={{
+                        color: color ?? "var(--focus)",
+                        // the row's colour, opaque, so a long line scrolls under the label instead of through it
+                        background: `linear-gradient(to right, transparent, color-mix(in oklab, ${color ?? "var(--focus)"} 20%, var(--panel)) 12px)`,
+                      }}
                     >
                       ← this line
                     </span>
