@@ -1,50 +1,54 @@
 # whyl
 
-**Git blame for AI coding agents.** Git tells you *what* changed. whyl tells you *why the agent changed it*: the prompt it was working on, what it saw just before, the edit itself, and whether it ever checked its work.
+**Know why every line your agents wrote is there.** Point whyl at a line and it shows which agent wrote it, what you asked for, what the agent was thinking just before, the edit itself, and how it checked its work.
 
-<!-- demo: docs/demo.gif -->
+![Claude Code, Codex and opencode edit Flask's config.py; whyl blame shows who wrote each line, then the story behind one](docs/demo-terminal.gif)
 
 Works with **Claude Code**, **Codex** and **opencode**. Local-first: one SQLite file on your machine, no accounts, no runtime dependencies. Get explanations of code written by your agent without any external keys or accounts.
 
-## The diff looks fine. Was it?
+## Why is this line here?
 
-Agents write more and more of your code, and `git diff` only shows the result. It can't tell you that a line was written after two failing test runs, that the agent edited the test instead of the code, or that nothing ever ran after the change. whyl reads the history your agents already keep and answers one question for any line: **why does this exist?**
+Your agents keep a record of everything they do: your prompt, their reasoning, every command and edit. whyl reads those records and ties each line of your code to the turn that wrote it, so you can ask any line why it exists, whichever agent wrote it.
 
 ```text
-$ whyl blame shop.py:8
-shop.py:8
-        return price * (1 - percent / 100)
+$ whyl blame src/flask/config.py:381
+src/flask/config.py:381
+                key: "*****" if any(m in key.upper() for m in secret_markers) else value
 
-written by codex · session 20261004T132159Z-39de3d · turn 1 · 2026-10-04 18:52:33 IST
+written by opencode · session ses_ed0360a0effe6ybNqsaqwbnlTj · turn 1 · 2026-10-12 16:35:39 IST · observed by whyl
 
 YOU ASKED
-  apply_discount in shop.py is buggy. Write unittest tests in test_shop.py that expose it, run them
-  and watch them fail, then fix the bug and rerun until they pass.
+  "Printing app.config shows SECRET_KEY and other secrets in plain text, so they end up in logs and
+  tracebacks. Make Config.__repr__ in src/flask/config.py mask values whose keys look secret
+  (SECRET, PASSWORD, TOKEN, KEY). Add a test and run .venv/bin/pytest tests/test_config.py"
 
 WHY THIS CHANGE  what the record shows just before it
-  said     18:52:26  The first run exposed one bug, but the 20% test used a $100 price, which
-                     accidentally passed the current subtraction implementation. I'm strengthening
-                     that case with a different price so it checks percentage math directly, then
-                     I'll correct `apply_discount`.
-  failing  18:52:30  ✗ python3 -m unittest -v  → 3 tests, 2 failed · AssertionError: -25 != 0
+  thought  16:35:35  Let me implement `__repr__` masking. Keys whose names contain SECRET, PASSWORD,
+                     TOKEN, KEY (case-insensitive presumably). Let me use a set of substrings.
+                     …
 
-THE CHANGE  18:52:33  shop.py +1 −1
-  │ @@ -5,3 +5,3 @@
-  │  def apply_discount(price, percent):
-  │ -    return price - percent
-  │ +    return price * (1 - percent / 100)   ← this line
-  Then, 1s later: ✓ python3 -m unittest -v  → 3 tests passed
+THE CHANGE  16:35:39  src/flask/config.py +9 −1
+  │      def __repr__(self) -> str:
+  │ -        return f"<{type(self).__name__} {dict.__repr__(self)}>"
+  │ +        """Show the config as a dict, but mask the values of keys that
+  │ +        look like secrets so they don't leak into logs or tracebacks.
+  │ +        """
+  │ +        secret_markers = ("SECRET", "PASSWORD", "TOKEN", "KEY")
+  │ +        masked = {
+  │ +            key: "*****" if any(m in key.upper() for m in secret_markers) else value   ← this line
+  │ +            for key, value in self.items()
+  │ +        }
+  │ +        return f"<{type(self).__name__} {masked!r}>"
+  Then, 7s later: ✓ .venv/bin/pytest tests/test_config.py -q  → 23 passed
 
-WORKED  for 32s · 12 steps · test_shop.py +19 −1 · shop.py +1 −1 · tests ✗ ✗ ✓
-  18:52:08  agent    I'll inspect `shop.py` and the existing test setup, add focused `unittest` cas…
-  18:52:20  edit     test_shop.py +18 −0
-  18:52:23  test     ✗ python3 -m unittest -v  → 3 tests, 1 failed · AssertionError: -25 != 0
+WORKED  for 25s · 11 steps · src/flask/config.py +9 −1 · tests/test_config.py +18 −0 · tests ✓
+  16:35:33  read     config.py
+  16:35:33  read     test_config.py
+▶ 16:35:39  edit     src/flask/config.py +9 −1   ← wrote this line
+  16:35:42  edit     tests/test_config.py +18 −0
+  16:35:45  thinking Wait, TEST_KEY contains KEY so it would be masked too. My assertion `"TEST_KEY…
+  16:35:46  test     ✓ .venv/bin/pytest tests/test_config.py -q  → 23 passed
   …
-▶ 18:52:33  edit     shop.py +1 −1   ← wrote this line
-  18:52:34  test     ✓ python3 -m unittest -v  → 3 tests passed
-
-THE AGENT CONCLUDED  18:52:35
-  Added three `unittest` cases for percentage, zero, and full discounts in test_shop.py. …
 ```
 
 Everything above comes from the agent's own record. whyl shows the order in which things happened, not proof of cause, and says so.
@@ -86,7 +90,7 @@ claude   f510a2  t1   Oct 07 '26 15:13  49      return [x * y for x, y in zip(a,
 
 **`whyl view [FILE[:LINE]]`**: the same history in your browser. Each file is shown with who wrote every block; click any line for its story. It updates live while an agent works. `j`/`k` move between lines, `⌘K` finds any file or session. The page is served from 127.0.0.1 only, and it's prebuilt, so you don't need Node.
 
-<!-- screenshot: docs/viewer.png -->
+![whyl view: click a line to see why it was written, then ask for an AI-generated summary of the turn](docs/demo-view.gif)
 
 **`whyl explain FILE:LINE`**: a plain-language summary of a turn, written by an agent CLI you already have (`claude`, `codex` or `opencode`, run headless with no tools). A session goes to its own agent's CLI, so your code reaches no provider that hadn't already seen it. Each turn is summarized once and kept, nothing is summarized unless you ask, and every summary is labelled as AI-generated, with the model that wrote it.
 
