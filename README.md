@@ -146,7 +146,7 @@ Each prompt runs as a separate turn on the same thread. Codex edits files in `--
 | `--approvals` | `decline` | how to answer approval requests: `decline`, `accept`, `ask` (prompt in the terminal) |
 | `--turn-timeout` | 1800 | total seconds per turn |
 | `--rpc-timeout` | 120 | seconds to wait for each request's response |
-| `--captures` | `$AGENT_HISTORY_CAPTURES` or `./captures` | where session directories go |
+| `--captures` | `$WHYL_CAPTURES` or `./captures` | where session directories go |
 | `--codex` | `$CODEX_BIN` or `codex` | Codex executable |
 
 Environment variables are optional; see `.env.example`. The recorder doesn't load `.env` itself, so use `set -a; source .env; set +a` if you want it.

@@ -330,7 +330,7 @@ def main() -> int:
     parser.add_argument("-i", "--interactive", action="store_true",
                         help="After the given prompts, keep reading follow-up prompts from the terminal.")
     parser.add_argument("--cwd", default=".", help="Workspace Codex works in (default: current directory).")
-    parser.add_argument("--captures", default=os.environ.get("AGENT_HISTORY_CAPTURES", str(DEFAULT_CAPTURES)),
+    parser.add_argument("--captures", default=os.environ.get("WHYL_CAPTURES", str(DEFAULT_CAPTURES)),
                         help="Directory that receives one sub-directory per session.")
     parser.add_argument("--codex", default=os.environ.get("CODEX_BIN", "codex"), help="Codex CLI executable.")
     parser.add_argument("--model", help="Model to request in thread/start (default: Codex config).")
