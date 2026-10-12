@@ -156,6 +156,23 @@ def test_history_from_before_observation_is_kept(tmp_path, repo, store):
         ("agent", None)]  # observed, but this session's transcript doesn't include that call
 
 
+def test_baseline_claims_context_lines_of_earlier_edits(tmp_path, repo, store):
+    """A recorded edit's context lines are known text with no author; the baseline makes them
+    pre-existing instead of leaving them untracked."""
+    (repo / "shop.py").write_text("def total(prices):\n    return sum(prices)\n# end\n")
+    store.ingest(claude_code.normalize(transcript(tmp_path, repo, [
+        ("toolu_e", "Edit", {"file_path": str(repo / "shop.py")},
+         {"filePath": str(repo / "shop.py"), "structuredPatch": [{
+             "oldStart": 1, "oldLines": 3, "newStart": 1, "newLines": 3,
+             "lines": [" def total(prices):", "-    return sum(prices)", "+    return sum(prices) or 0",
+                       " # end"]}]},
+         "10:00:30.000")])))
+    (repo / "shop.py").write_text("def total(prices):\n    return sum(prices) or 0\n# end\n")
+    hook(store, repo, "pre", "later", "10:30:00")  # first observation: the baseline
+    lines = blame(store, str(repo / "shop.py")).lines
+    assert [l.author.kind if l.author else None for l in lines] == ["baseline", "agent", "baseline"]
+
+
 def test_two_agents_one_file(tmp_path, repo, store, capsys):
     hook(store, repo, "pre", "c1", "10:01:00", agent="codex", session="codex-thread")
     shell(repo, "echo 'def mean(xs): return sum(xs) / len(xs)' >> shop.py")

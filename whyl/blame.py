@@ -121,14 +121,19 @@ def _apply_recorded(files: dict[str, list[Line]], path: str, event_id: str, kind
             files[move_path] = files.pop(path)
 
 
-def align(lines: list[Line], texts: list[str], origin: str | None) -> list[Line]:
+def align(lines: list[Line], texts: list[str], origin: str | None, claim: bool = False) -> list[Line]:
     """Make `lines` read `texts`: lines that stay keep their origin; the rest are new lines from
-    `origin` (None: unattributed), carrying the history of the lines they replaced."""
+    `origin` (None: unattributed), carrying the history of the lines they replaced. With `claim`
+    (the baseline), lines that stay but have no origin, such as an edit's context lines, become
+    `origin`'s too."""
     old = [line.text if line.text is not None else object() for line in lines]  # unknown never matches
     out: list[Line] = []
     for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, old, texts, autojunk=False).get_opcodes():
         if tag == "equal":
-            out += lines[i1:i2]
+            for j, line in enumerate(lines[i1:i2], j1):
+                if claim and line.origin is None:
+                    line = Line(line.text, origin, [(origin, line.text)] if origin else [], j + 1)
+                out.append(line)
             continue
         replaced = lines[i1:i2] if tag == "replace" else []
         for offset, j in enumerate(range(j1, j2)):
@@ -214,7 +219,8 @@ def blame(store: Store, path: str) -> FileBlame:
                 warnings.append(f"{row['path']}: content not kept (binary or too large)")
                 continue
             origin = f"{OBSERVED}{row['observation_id']}"
-            files[row["path"]] = align(files.get(row["path"], []), text.splitlines(), origin)
+            files[row["path"]] = align(files.get(row["path"], []), text.splitlines(), origin,
+                                       claim=kind == "baseline")
     target = next((c for c in candidates if c in files), None)
     if target is None:
         raise LookupError(f"no recorded or observed agent changes to {path}")
