@@ -120,3 +120,7 @@ Adding an agent means writing one adapter into an agent-agnostic event model; se
 
 - [docs/event-model.md](docs/event-model.md): the canonical event model, each agent's mapping, and how blame works
 - [docs/development.md](docs/development.md): running the tests, the code layout, and working on the viewer
+
+## License
+
+[MIT](LICENSE)

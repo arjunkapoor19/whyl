@@ -3,6 +3,8 @@ name = "whyl"
 version = "0.1.0"
 description = "Git-like history and observability for AI coding agents"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.9"
 dependencies = []
 
